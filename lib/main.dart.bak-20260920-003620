@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'customer_dashboard.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -335,18 +334,6 @@ class RoleDashboard extends StatelessWidget {
       'superadmin' => 'SuperAdmin Dashboard',
       _ => 'Account',
     };
-    if (role == 'customer') {
-      return CustomerDashboard(
-        load: () async {
-          final response = await api.request('customer-dashboard');
-          return Map<String, dynamic>.from(response['data'] as Map);
-        },
-        onLogout: () async {
-          await api.logout();
-          onLogout();
-        },
-      );
-    }
     return Scaffold(
         appBar: AppBar(title: const Text('JM Broadband'), actions: [
           IconButton(

@@ -1,13 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'customer_dashboard.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,40 +19,13 @@ Uri normalizeServer(String input) {
   if (value.isEmpty) throw const FormatException('Enter a server address');
   if (!value.contains('://')) value = 'https://$value';
   final uri = Uri.tryParse(value);
-  if (uri == null ||
-      uri.scheme != 'https' ||
-      uri.host.isEmpty ||
-      uri.userInfo.isNotEmpty ||
-      uri.hasQuery ||
-      uri.hasFragment) {
-    throw const FormatException(
-        'Use a valid HTTPS domain or IP and optional /panel path');
+  if (uri == null || uri.scheme != 'https' || uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty || uri.hasQuery || uri.hasFragment) {
+    throw const FormatException('Use a valid HTTPS domain or IP and optional /panel path');
   }
   final path = uri.path.replaceAll(RegExp(r'/+$'), '');
   if (path.endsWith('/mobile-api.php')) return uri.replace(path: path);
   return uri.replace(path: '$path/mobile-api.php');
-}
-
-const _localCertBase64 = String.fromEnvironment('JM_LOCAL_CERT_B64');
-
-http.Client createApiClient(Uri url) {
-  final isLocalDebugServer = kDebugMode &&
-      url.scheme == 'https' &&
-      url.host == 'localhost' &&
-      url.port == 8443 &&
-      _localCertBase64.isNotEmpty;
-
-  if (!isLocalDebugServer) {
-    return http.Client();
-  }
-
-  final context = SecurityContext(withTrustedRoots: true);
-
-  context.setTrustedCertificatesBytes(
-    base64Decode(_localCertBase64),
-  );
-
-  return IOClient(HttpClient(context: context));
 }
 
 class MobileApi {
@@ -90,18 +59,16 @@ class MobileApi {
         'Authorization': 'Bearer $accessToken',
     };
     // Never follow redirects: credentials must not cross server origins.
-    final client = createApiClient(url);
+    final client = http.Client();
     late final http.Response result;
     try {
       final req = http.Request(body == null ? 'GET' : 'POST', url);
       req.followRedirects = false;
       req.headers.addAll(headers);
       if (body != null) req.body = jsonEncode(body);
-      final streamed =
-          await client.send(req).timeout(const Duration(seconds: 15));
+      final streamed = await client.send(req).timeout(const Duration(seconds: 15));
       if (streamed.statusCode >= 300 && streamed.statusCode < 400) {
-        throw StateError(
-            'Server redirected the API request; verify its HTTPS panel URL');
+        throw StateError('Server redirected the API request; verify its HTTPS panel URL');
       }
       result = await http.Response.fromStream(streamed)
           .timeout(const Duration(seconds: 15));
@@ -134,8 +101,8 @@ class MobileApi {
 
   Future<void> login(String server, String username, String password) async {
     await discover(server);
-    final data = await request('login',
-        authorized: false, body: {'username': username, 'password': password});
+    final data = await request('login', authorized: false,
+        body: {'username': username, 'password': password});
     final payload = Map<String, dynamic>.from(data['data'] as Map);
     accessToken = payload['access_token'] as String;
     refreshToken = payload['refresh_token'] as String;
@@ -147,8 +114,8 @@ class MobileApi {
 
   Future<void> refresh() async {
     if (refreshToken == null) throw StateError('Please log in');
-    final data = await request('refresh',
-        authorized: false, body: {'refresh_token': refreshToken});
+    final data = await request('refresh', authorized: false,
+        body: {'refresh_token': refreshToken});
     final payload = Map<String, dynamic>.from(data['data'] as Map);
     accessToken = payload['access_token'] as String;
     refreshToken = payload['refresh_token'] as String;
@@ -191,20 +158,16 @@ class _JmAppState extends State<JmApp> {
     super.initState();
     _boot();
   }
-
   Future<void> _boot() async {
     await api.restore();
     if (mounted) setState(() => loading = false);
   }
-
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'JM Broadband',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-            useMaterial3: true,
-            colorScheme:
-                ColorScheme.fromSeed(seedColor: const Color(0xFF10A88B))),
+        theme: ThemeData(useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF10A88B))),
         home: loading
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
             : api.user == null
@@ -220,7 +183,6 @@ class LoginScreen extends StatefulWidget {
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
-
 class _LoginScreenState extends State<LoginScreen> {
   final server = TextEditingController();
   final username = TextEditingController();
@@ -230,24 +192,15 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    server.text =
-        widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ?? '';
+    server.text = widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ?? '';
   }
-
   @override
   void dispose() {
-    server.dispose();
-    username.dispose();
-    password.dispose();
-    super.dispose();
+    server.dispose(); username.dispose(); password.dispose(); super.dispose();
   }
-
   Future<void> submit() async {
     if (busy) return;
-    setState(() {
-      busy = true;
-      error = null;
-    });
+    setState(() { busy = true; error = null; });
     try {
       await widget.api.login(server.text, username.text.trim(), password.text);
       if (mounted) widget.onLogin();
@@ -257,66 +210,38 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) setState(() => busy = false);
     }
   }
-
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-            child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Icon(Icons.wifi_rounded,
-                              size: 70, color: Color(0xFF10A88B)),
-                          const SizedBox(height: 15),
-                          const Text('JM Broadband',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  fontSize: 30, fontWeight: FontWeight.bold)),
-                          const Text('Customer • Reseller • Admin',
-                              textAlign: TextAlign.center),
-                          const SizedBox(height: 35),
-                          TextField(
-                              controller: server,
-                              keyboardType: TextInputType.url,
-                              decoration: const InputDecoration(
-                                  labelText: 'Server IP / Domain',
-                                  hintText: 'https://isp.example.com/panel',
-                                  border: OutlineInputBorder())),
-                          const SizedBox(height: 15),
-                          TextField(
-                              controller: username,
-                              decoration: const InputDecoration(
-                                  labelText: 'Username',
-                                  border: OutlineInputBorder())),
-                          const SizedBox(height: 15),
-                          TextField(
-                              controller: password,
-                              obscureText: true,
-                              onSubmitted: (_) => submit(),
-                              decoration: const InputDecoration(
-                                  labelText: 'Password',
-                                  border: OutlineInputBorder())),
-                          if (error != null)
-                            Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
-                                child: Text(error!,
-                                    style: const TextStyle(color: Colors.red))),
-                          const SizedBox(height: 20),
-                          FilledButton(
-                              onPressed: busy ? null : submit,
-                              child: Padding(
-                                  padding: const EdgeInsets.all(14),
-                                  child:
-                                      Text(busy ? 'Connecting…' : 'Sign In'))),
-                          const SizedBox(height: 16),
-                          const Text(
-                              'HTTPS required. Your username and password are sent only to the selected server.',
-                              textAlign: TextAlign.center),
-                        ])))),
+        body: Center(child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Icon(Icons.wifi_rounded, size: 70, color: Color(0xFF10A88B)),
+              const SizedBox(height: 15),
+              const Text('JM Broadband', textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
+              const Text('Customer • Reseller • Admin', textAlign: TextAlign.center),
+              const SizedBox(height: 35),
+              TextField(controller: server, keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(labelText: 'Server IP / Domain',
+                      hintText: 'https://isp.example.com/panel', border: OutlineInputBorder())),
+              const SizedBox(height: 15),
+              TextField(controller: username,
+                  decoration: const InputDecoration(labelText: 'Username', border: OutlineInputBorder())),
+              const SizedBox(height: 15),
+              TextField(controller: password, obscureText: true,
+                  onSubmitted: (_) => submit(),
+                  decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())),
+              if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Text(error!, style: const TextStyle(color: Colors.red))),
+              const SizedBox(height: 20),
+              FilledButton(onPressed: busy ? null : submit,
+                  child: Padding(padding: const EdgeInsets.all(14),
+                      child: Text(busy ? 'Connecting…' : 'Sign In'))),
+              const SizedBox(height: 16),
+              const Text('HTTPS required. Your username and password are sent only to the selected server.',
+                  textAlign: TextAlign.center),
+            ])))),
       );
 }
 
@@ -335,41 +260,20 @@ class RoleDashboard extends StatelessWidget {
       'superadmin' => 'SuperAdmin Dashboard',
       _ => 'Account',
     };
-    if (role == 'customer') {
-      return CustomerDashboard(
-        load: () async {
-          final response = await api.request('customer-dashboard');
-          return Map<String, dynamic>.from(response['data'] as Map);
-        },
-        onLogout: () async {
-          await api.logout();
-          onLogout();
-        },
-      );
-    }
-    return Scaffold(
-        appBar: AppBar(title: const Text('JM Broadband'), actions: [
-          IconButton(
-              icon: const Icon(Icons.logout),
-              onPressed: () async {
-                await api.logout();
-                onLogout();
-              }),
-        ]),
-        body: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(caption,
-                    style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 12),
-                Text('Welcome, ${user['name'] ?? user['username'] ?? ''}'),
-                Text('Server: ${api.endpoint?.host ?? ''}'),
-                const SizedBox(height: 30),
-                const Text(
-                    'Authentication foundation connected. Role-specific business dashboards are next.'),
-              ],
-            )));
+    return Scaffold(appBar: AppBar(title: const Text('JM Broadband'), actions: [
+      IconButton(icon: const Icon(Icons.logout), onPressed: () async {
+        await api.logout();
+        onLogout();
+      }),
+    ]), body: Padding(padding: const EdgeInsets.all(24), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(caption, style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        Text('Welcome, ${user['name'] ?? user['username'] ?? ''}'),
+        Text('Server: ${api.endpoint?.host ?? ''}'),
+        const SizedBox(height: 30),
+        const Text('Authentication foundation connected. Role-specific business dashboards are next.'),
+      ],
+    )));
   }
 }
