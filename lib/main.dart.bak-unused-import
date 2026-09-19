@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'customer_dashboard.dart';
 import 'panel_workspace.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -350,10 +351,6 @@ class RoleDashboard extends StatelessWidget {
       load: (section) async {
         final response =
             await api.request('mobile-data', query: {'section': section});
-        return Map<String, dynamic>.from(response['data'] as Map);
-      },
-      loadTraffic: () async {
-        final response = await api.request('live-traffic');
         return Map<String, dynamic>.from(response['data'] as Map);
       },
       onLogout: () async {
