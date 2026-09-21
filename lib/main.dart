@@ -110,7 +110,14 @@ class MobileApi {
       result = await http.Response.fromStream(streamed)
           .timeout(const Duration(seconds: 15));
     } on TimeoutException {
-      throw StateError('Server connection timed out');
+      throw StateError(
+          'Server connection timed out. Check the HTTPS server connection.');
+    } on SocketException {
+      throw StateError(
+          'Cannot reach the Mobile API over HTTPS. Check your network or VPN and the server URL.');
+    } on HandshakeException {
+      throw StateError(
+          'HTTPS certificate verification failed. Check the server certificate.');
     } finally {
       client.close();
     }
@@ -215,7 +222,7 @@ class _JmAppState extends State<JmApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'JM Broadband',
+        title: 'Arivo',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
             useMaterial3: true,
@@ -247,7 +254,8 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     server.text =
-        widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ?? '';
+        widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ??
+            'https://27.147.201.165/panel';
   }
 
   @override
@@ -284,10 +292,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Icon(Icons.wifi_rounded,
-                              size: 70, color: Color(0xFF10A88B)),
+                          Image.asset('assets/branding/logo.png',
+                              height: 100, fit: BoxFit.contain),
                           const SizedBox(height: 15),
-                          const Text('JM Broadband',
+                          const Text('Arivo',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 30, fontWeight: FontWeight.bold)),

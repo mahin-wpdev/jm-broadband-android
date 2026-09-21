@@ -84,7 +84,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
     final page = pages[selected];
     return Scaffold(
       appBar: AppBar(
-        title: Text('JM Broadband · ${page.title}'),
+        title: Text('Arivo · ${page.title}'),
         actions: [
           IconButton(
             tooltip: 'Refresh',
