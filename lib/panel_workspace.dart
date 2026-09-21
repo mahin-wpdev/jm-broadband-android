@@ -7,6 +7,7 @@ class PanelWorkspace extends StatefulWidget {
   final String name;
   final Future<Map<String, dynamic>> Function(String section) load;
   final Future<Map<String, dynamic>> Function() loadTraffic;
+  final String trafficHistoryKey;
   final Future<void> Function() onLogout;
 
   const PanelWorkspace({
@@ -15,6 +16,7 @@ class PanelWorkspace extends StatefulWidget {
     required this.name,
     required this.load,
     required this.loadTraffic,
+    required this.trafficHistoryKey,
     required this.onLogout,
   });
 
@@ -104,7 +106,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
       ),
       body: switch (page.section) {
         'account' => _AccountPage(name: widget.name, role: widget.role),
-        'traffic' => LiveTrafficPage(load: widget.loadTraffic),
+        'traffic' => LiveTrafficPage(
+            load: widget.loadTraffic, historyKey: widget.trafficHistoryKey),
         'more' => _MorePage(load: widget.load),
         _ => FutureBuilder<Map<String, dynamic>>(
             future: pending,

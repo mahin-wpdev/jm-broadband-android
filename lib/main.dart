@@ -364,6 +364,8 @@ class RoleDashboard extends StatelessWidget {
         final response = await api.request('live-traffic');
         return Map<String, dynamic>.from(response['data'] as Map);
       },
+      trafficHistoryKey: 'arivo:traffic:${api.endpoint}:${user['role']}:'
+          '${user['id'] ?? user['username']}',
       onLogout: () async {
         await api.logout();
         onLogout();
