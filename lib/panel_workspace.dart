@@ -230,12 +230,19 @@ class _SectionView extends StatelessWidget {
       final profile = _asMap(data['profile']);
       final package = _asMap(data['package']);
       final network = _asMap(data['network']);
+      network.remove('usage_download_bytes');
+      network.remove('usage_upload_bytes');
+      final monthly = _asMap(data['monthly_usage']);
       return [
         Text('Hello, ${profile['name'] ?? profile['username'] ?? ''}',
             style: Theme.of(context).textTheme.headlineSmall),
         _InfoCard(title: 'Your profile', values: profile),
         _InfoCard(title: 'Your internet package', values: package),
-        _InfoCard(title: 'Network (live API not connected)', values: network),
+        _monthlyCard(monthly),
+        if (network.values.any((value) => value != null))
+          _InfoCard(title: 'Network summary', values: network),
+        const Text(
+            'See the Live tab for current PPPoE speed and online status.'),
       ];
     }
     return [
@@ -249,6 +256,37 @@ class _SectionView extends StatelessWidget {
 Map<String, dynamic> _asMap(Object? value) {
   if (value is Map) return Map<String, dynamic>.from(value);
   return {};
+}
+
+String _usageGb(Object? value) {
+  final bytes = value is num ? value : num.tryParse('${value ?? ''}');
+  if (bytes == null || !bytes.isFinite || bytes < 0) return 'Unavailable';
+  return '${(bytes / 1000000000).toStringAsFixed(2)} GB';
+}
+
+Widget _monthlyCard(Map<String, dynamic> usage) {
+  final available = usage['available'] == true &&
+      _usageGb(usage['download_bytes']) != 'Unavailable' &&
+      _usageGb(usage['upload_bytes']) != 'Unavailable' &&
+      _usageGb(usage['total_bytes']) != 'Unavailable';
+  if (!available) {
+    return _InfoCard(title: 'Monthly bandwidth usage', values: {
+      'Status': 'Unavailable',
+      'Reason': usage['note'] ??
+          'This Panel has no verified monthly accounting data.',
+    });
+  }
+  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    _InfoCard(title: 'Monthly bandwidth usage (${usage['month']})', values: {
+      'Download': _usageGb(usage['download_bytes']),
+      'Upload': _usageGb(usage['upload_bytes']),
+      'Total': _usageGb(usage['total_bytes']),
+    }),
+    if (usage['note'] is String)
+      Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Text(usage['note'] as String)),
+  ]);
 }
 
 class _InfoCard extends StatelessWidget {
