@@ -8,10 +8,10 @@ does not change any installed phone app or running phpNuxBill instance.
 - Flutter 3.47.5 (stable); Flutter and Dart dependencies resolved.
 - `flutter test --no-pub --reporter expanded`: 11 tests passed, including server-only peak parsing.
 - `flutter analyze --no-pub`: no issues found.
-- `flutter build apk --release --no-pub`: succeeded.
-- Signed release APK `build/app/outputs/flutter-apk/app-release.apk`:
-  application ID `com.jmbroadband.jm_broadband_app`, version 1.0.4+5.
-  APK Signature Scheme v2 verification succeeded with Arivo release signer.
+- Previous 1.0.4+5 release APK built successfully. The new 1.0.5+6 signed
+  build was attempted but Gradle did not finish; a current release APK is NOT verified.
+- Previously signed 1.0.4+5 APK passed APK Signature Scheme v2 verification.
+  Do not distribute it as 1.0.5+6; the local output may be stale.
 - Build outputs and keystore credentials are local and must NOT be committed
   or uploaded with the public source repository.
 
@@ -30,8 +30,9 @@ does not change any installed phone app or running phpNuxBill instance.
 - Live PPPoE online/current speed endpoint and graph load.
 - New peak UI honestly shows 'Server peak history is not supported by this Panel'
   until production Panel API and collector are deployed; full end-to-end peak is blocked.
-- Debug APK install initially conflicted with existing release signature. Do not
-  replace an installed signed release with a debug build; protect phone local data.
+- Debug APK install initially conflicted with existing release signature. A
+  same-key debug update was subsequently installed without uninstall and preserved login.
+  Do not replace an installed signed release with a debug build; protect phone local data.
 
 ## Release gate
 The matching Panel `next-release` branch must pass PHP CI and its payment,
