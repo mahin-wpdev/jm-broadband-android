@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'traffic_chart.dart';
 import 'traffic_history.dart';
+import 'server_traffic_peak.dart';
 
 /// Polls a customer-owned live-traffic endpoint at most once/second in foreground.
 /// Server may take longer; requests never overlap. No polling on other tabs.
@@ -127,16 +128,12 @@ class _LiveTrafficPageState extends State<LiveTrafficPage>
     return '${(rate / 1000000).toStringAsFixed(2)} Mbps';
   }
 
-  String _peakMbps(num? bps) =>
-      bps == null ? 'No data' : '${(bps / 1000000).toStringAsFixed(2)} Mbps';
-
   @override
   Widget build(BuildContext context) {
     final s = _sample;
     final active = s?['available'] == true;
     final online = s?['online'] == true;
-    final downPeak = _history.downloadPeak;
-    final upPeak = _history.uploadPeak;
+    final peak = ServerTrafficPeak.fromJson(s?['server_peak']);
     return ListView(
       padding: const EdgeInsets.all(18),
       children: [
@@ -184,28 +181,28 @@ class _LiveTrafficPageState extends State<LiveTrafficPage>
         Text(
             '${_history.lastMinuteCount(DateTime.now())} live samples in the last 60 seconds.'),
         const SizedBox(height: 14),
-        Text('Highest recorded speed · last 1 hour',
+        Text('Highest recorded RADIUS interval speed',
             style: Theme.of(context).textTheme.titleLarge),
         Card(
             child: Column(children: [
           ListTile(
               leading: const Icon(Icons.download),
               title: const Text('Peak download'),
-              subtitle: Text(downPeak == null
-                  ? 'No samples yet'
-                  : 'Recorded at ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(downPeak.atMs)).format(context)}'),
-              trailing: Text(_peakMbps(downPeak?.downloadBps))),
+              subtitle: Text(peak.downloadAtMs == null
+                  ? peak.message
+                  : 'Recorded at ${TimeOfDay.fromDateTime(ServerTrafficPeak.observedLocal(peak.downloadAtMs)!).format(context)}'),
+              trailing: Text(peak.downloadText)),
           ListTile(
               leading: const Icon(Icons.upload),
               title: const Text('Peak upload'),
-              subtitle: Text(upPeak == null
-                  ? 'No samples yet'
-                  : 'Recorded at ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(upPeak.atMs)).format(context)}'),
-              trailing: Text(_peakMbps(upPeak?.uploadBps))),
+              subtitle: Text(peak.uploadAtMs == null
+                  ? peak.message
+                  : 'Recorded at ${TimeOfDay.fromDateTime(ServerTrafficPeak.observedLocal(peak.uploadAtMs)!).format(context)}'),
+              trailing: Text(peak.uploadText)),
         ])),
-        Text('${_history.count} recorded samples in the rolling hour. '
-            'History is kept on this phone for this signed-in account. '
-            'App/background gaps are not measured.'),
+        const Text('When the server collector is enabled, recorded speed remains '
+            'available while this phone is off. RADIUS accounting records '
+            'interval-average rates, not one-second instantaneous peaks.'),
         const SizedBox(height: 12),
         const Text('Usage totals, bills, package expiry and synced ONU optical '
             'readings are separate data sources and must not be treated as '

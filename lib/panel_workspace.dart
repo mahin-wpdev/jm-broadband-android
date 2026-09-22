@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'live_traffic.dart';
+import 'server_traffic_peak.dart';
 
 /// Actual read-only Panel data. The client never supplies an actor/customer ID.
 class PanelWorkspace extends StatefulWidget {
@@ -242,6 +243,7 @@ class _SectionView extends StatelessWidget {
         _InfoCard(title: 'Your profile', values: profile),
         _InfoCard(title: 'Your internet package', values: package),
         _monthlyCard(monthly),
+        _serverPeakCard(ServerTrafficPeak.fromJson(data['traffic_peak'])),
         if (network.values.any((value) => value != null))
           _InfoCard(title: 'Network summary', values: network),
         const Text(
@@ -290,6 +292,20 @@ Widget _monthlyCard(Map<String, dynamic> usage) {
           padding: const EdgeInsets.only(bottom: 16),
           child: Text(usage['note'] as String)),
   ]);
+}
+
+Widget _serverPeakCard(ServerTrafficPeak peak) {
+  if (!peak.hasRecord) {
+    return _InfoCard(title: 'Server-recorded highest speed', values: {
+      'Status': peak.message,
+    });
+  }
+  return _InfoCard(title: 'Server-recorded highest speed', values: {
+    'Download': peak.downloadText,
+    'Upload': peak.uploadText,
+    'Measurement': 'RADIUS accounting interval average',
+    'History': 'Persisted independently of this phone',
+  });
 }
 
 class _InfoCard extends StatelessWidget {
