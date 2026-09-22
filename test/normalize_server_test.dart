@@ -11,6 +11,13 @@ void main() {
         '/panel/mobile-api.php');
   });
   test('refuses insecure HTTP', () {
-    expect(() => normalizeServer('http://isp.example.com'), throwsFormatException);
+    expect(
+        () => normalizeServer('http://isp.example.com'), throwsFormatException);
+  });
+  test('Android decryption-reset marker is not a restored server URL', () {
+    expect(restoredServerUri('Data has been reset'), isNull);
+    expect(restoredServerUri(null), isNull);
+    expect(restoredServerUri('https://isp.example.com/panel')!.host,
+        'isp.example.com');
   });
 }

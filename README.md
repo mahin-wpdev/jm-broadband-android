@@ -26,3 +26,17 @@ Moving that device to public release requires a separate, user-approved
 local-data backup/re-login/reinstall process (or intentionally distinct
 application ID), not a silent in-place update. Peak speed data belongs to
 the server and is not reset by changing the phone app.
+
+### Release 1.0.7+8: Android restored-key recovery
+
+On reinstall, Android previously restored encrypted login preferences without
+restoring the original device-bound Keystore key. The first secure-storage
+read then threw BAD_DECRYPT and left the app on an infinite startup spinner.
+The app now resets unreadable local secure storage and shows Login, explicitly
+ignores the storage plugin's `Data has been reset` marker as a server URL, and
+has a bounded startup recovery path. Android auto-backup is disabled and
+shared preferences are excluded from cloud/device-transfer data extraction.
+Existing logged-in installs are updated in place using the **release signing
+key**. Real device verification: `1.0.7` launches to Login with the configured
+default Panel address and no repeat BAD_DECRYPT exception. Only local login
+may need re-entry; server-owned RADIUS peak history is unchanged.

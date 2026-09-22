@@ -14,7 +14,11 @@ void main() {
   runApp(const JmApp());
 }
 
-const _storage = FlutterSecureStorage();
+// Android may restore encrypted preferences without their device-bound Keystore key.
+// Treat that old local session as invalid rather than trapping the app on splash.
+const _storage = FlutterSecureStorage(
+  aOptions: AndroidOptions(resetOnError: true),
+);
 
 /// Keeps the path to the existing panel; does not guess arbitrary server paths.
 /// API file is installed beside panel/init.php.
@@ -35,6 +39,12 @@ Uri normalizeServer(String input) {
   final path = uri.path.replaceAll(RegExp(r'/+$'), '');
   if (path.endsWith('/mobile-api.php')) return uri.replace(path: path);
   return uri.replace(path: '$path/mobile-api.php');
+}
+
+// An Android key-reset result is not a saved server address.
+Uri? restoredServerUri(String? value) {
+  if (value == null || value == 'Data has been reset') return null;
+  return normalizeServer(value);
 }
 
 const _localCertBase64 = String.fromEnvironment('JM_LOCAL_CERT_B64');
@@ -66,16 +76,23 @@ class MobileApi {
   Map<String, dynamic>? user;
 
   Future<void> restore() async {
-    final server = await _storage.read(key: 'server');
-    if (server == null) return;
     try {
-      endpoint = normalizeServer(server);
+      // Include the first read in the recovery boundary: Android backups can
+      // restore ciphertext after the encryption key was destroyed on uninstall.
+      final server = await _storage.read(key: 'server');
+      // Do not mistake the plugin's recovery marker for the server URL.
+      final restoredEndpoint = restoredServerUri(server);
+      if (restoredEndpoint == null) return;
+      endpoint = restoredEndpoint;
       refreshToken = await _storage.read(key: 'refresh:${endpoint.toString()}');
       if (refreshToken != null) await refresh();
       if (accessToken != null) await me();
     } catch (_) {
+      // A stale or undecryptable local login must never block first-run UI.
       accessToken = null;
+      refreshToken = null;
       user = null;
+      endpoint = null;
     }
   }
 
@@ -201,13 +218,14 @@ class MobileApi {
 }
 
 class JmApp extends StatefulWidget {
-  const JmApp({super.key});
+  final MobileApi? initialApi;
+  const JmApp({super.key, this.initialApi});
   @override
   State<JmApp> createState() => _JmAppState();
 }
 
 class _JmAppState extends State<JmApp> {
-  final api = MobileApi();
+  late final MobileApi api = widget.initialApi ?? MobileApi();
   bool loading = true;
   @override
   void initState() {
@@ -216,8 +234,17 @@ class _JmAppState extends State<JmApp> {
   }
 
   Future<void> _boot() async {
-    await api.restore();
-    if (mounted) setState(() => loading = false);
+    try {
+      await api.restore().timeout(const Duration(seconds: 25));
+    } catch (_) {
+      // Storage/plugin errors or hung restoration must show the Login screen.
+      api.accessToken = null;
+      api.refreshToken = null;
+      api.user = null;
+      api.endpoint = null;
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   @override
