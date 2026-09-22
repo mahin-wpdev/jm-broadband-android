@@ -8,10 +8,10 @@ does not change any installed phone app or running phpNuxBill instance.
 - Flutter 3.47.5 (stable); Flutter and Dart dependencies resolved.
 - `flutter test --no-pub --reporter expanded`: 11 tests passed, including server-only peak parsing.
 - `flutter analyze --no-pub`: no issues found.
-- Previous 1.0.4+5 release APK built successfully. The new 1.0.5+6 signed
-  build was attempted but Gradle did not finish; a current release APK is NOT verified.
-- Previously signed 1.0.4+5 APK passed APK Signature Scheme v2 verification.
-  Do not distribute it as 1.0.5+6; the local output may be stale.
+- Fresh signed Android 1.0.5+6 release APK built successfully:
+  `build/app/outputs/flutter-apk/app-release.apk` (about 49.3 MB).
+- `apksigner verify --verbose --print-certs` verified APK Signature Scheme v2
+  with the Arivo release signer.
 - Build outputs and keystore credentials are local and must NOT be committed
   or uploaded with the public source repository.
 
