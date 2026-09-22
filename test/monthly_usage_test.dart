@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jm_broadband_app/panel_workspace.dart';
 
-Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage) async {
+Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
+    {Map<String, dynamic>? trafficPeak}) async {
   tester.view.physicalSize = const Size(1440, 3088);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.resetPhysicalSize);
@@ -18,6 +19,7 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage) async {
         'package': {'name': 'Test package'},
         'network': {'usage_download_bytes': null, 'usage_upload_bytes': null},
         'monthly_usage': usage,
+        'traffic_peak': trafficPeak,
       },
       loadTraffic: () async => {},
       onLogout: () async {},
@@ -53,5 +55,24 @@ void main() {
     expect(find.text('Unavailable'), findsOneWidget);
     expect(find.text('No verified monthly accounting data'), findsOneWidget);
     expect(find.text('0.00 GB'), findsNothing);
+  });
+
+  testWidgets('Home shows server-recorded peak without phone history',
+      (tester) async {
+    await showHome(tester, {
+      'available': false
+    }, trafficPeak: {
+      'source': 'radius_accounting',
+      'available': true,
+      'has_record': true,
+      'download_bps': 32000000,
+      'upload_bps': 8000000,
+      'download_at_ms': 1790000000000,
+      'upload_at_ms': 1790000001000,
+    });
+    expect(find.text('Server-recorded highest speed'), findsOneWidget);
+    expect(find.text('32.00 Mbps'), findsOneWidget);
+    expect(find.text('8.00 Mbps'), findsOneWidget);
+    expect(find.text('No record'), findsNothing);
   });
 }
