@@ -32,6 +32,24 @@ void main() {
       ...release(), 'sha256': 'invalid',
     }), throwsFormatException);
   });
+  test('only trusted GitHub release redirects are allowed', () {
+    final panel = Uri.parse('https://isp.example.com/panel/mobile-app-download.php');
+    for (final url in [
+      'https://isp.example.com/panel/mobile-app-download.php',
+      'https://github.com/mahin-wpdev/jm-broadband-android/releases/download/v1.0.8%2B9/jm-broadband.apk',
+      'https://release-assets.githubusercontent.com/file',
+    ]) {
+      expect(AppUpdater.trustedDownloadRedirect(Uri.parse(url), panel), isTrue);
+    }
+    for (final url in [
+      'http://github.com/mahin-wpdev/jm-broadband-android/releases/download/a.apk',
+      'https://github.com/other-owner/other-repo/releases/download/a.apk',
+      'https://github.com.evil.example/releases/download/a.apk',
+      'https://evil.example/file.apk',
+    ]) {
+      expect(AppUpdater.trustedDownloadRedirect(Uri.parse(url), panel), isFalse);
+    }
+  });
   testWidgets('required update cannot be postponed', (tester) async {
     await tester.pumpWidget(MaterialApp(home: AppUpdatePage(
       release: AppRelease.fromJson(release(required: true)),

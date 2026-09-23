@@ -1,0 +1,131 @@
+name: Publish signed JM Broadband APK to GitHub
+
+on:
+  workflow_dispatch:
+    inputs:
+      required_update:
+        description: Require customers to install this version before using the app
+        type: boolean
+        required: true
+        default: false
+      release_notes:
+        description: Release notes shown to customers
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jm-broadband-public-apk-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout approved next-release source
+        uses: actions/checkout@v4
+        with:
+          ref: next-release
+          fetch-depth: 0
+
+      - name: Configure Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Flutter analyzer
+        run: flutter analyze --no-pub
+
+      - name: Flutter unit and widget tests
+        run: flutter test --no-pub
+
+      - name: Calculate release tag and reject duplicates
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          src = Path('pubspec.yaml').read_text()
+          match = re.search(r'^version:\s*(\d+\.\d+\.\d+)\+(\d+)\s*$', src, re.M)
+          if not match or int(match[2]) < 1:
+              raise SystemExit('pubspec version must be MAJOR.MINOR.PATCH+BUILD')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'tag=v{match[1]}+{match[2]}', file=output)
+          PY
+          TAG=$(sed -n 's/^version: \([0-9][0-9.]*\)+\([0-9][0-9]*\)$/v\1+\2/p' pubspec.yaml)
+          test -n "$TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists"; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Git tag $TAG already exists"; exit 1
+          fi
+
+      - name: Configure release signing from GitHub Actions Secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${KEYSTORE_BASE64:?ANDROID_KEYSTORE_BASE64 secret missing}"
+          : "${KEY_ALIAS:?ANDROID_KEY_ALIAS secret missing}"
+          : "${KEY_PASSWORD:?ANDROID_KEY_PASSWORD secret missing}"
+          : "${STORE_PASSWORD:?ANDROID_STORE_PASSWORD secret missing}"
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n'             "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/key.properties
+
+      - name: Build signed public APK
+        run: flutter build apk --release --no-pub
+
+      - name: Verify APK signing matches the installed public app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='build/app/outputs/flutter-apk/app-release.apk'
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -n "$SIGNER"
+          ACTUAL=$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          EXPECTED='a6ed4b62afa6e2e50afff1679bf67645927b28e9a5a017d56d9ad7bf07e89ca8'
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo 'APK signing certificate differs from existing public app'; exit 1
+          fi
+
+      - name: Create public GitHub Release with APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRED_UPDATE: ${{ inputs.required_update }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/app/outputs/flutter-apk/app-release.apk
+          test -n "$RELEASE_NOTES"
+          POLICY=false
+          if [ "$REQUIRED_UPDATE" = true ]; then POLICY=true; fi
+          printf '<!-- jm-app-update:required=%s -->\n%s\n'             "$POLICY" "$RELEASE_NOTES" > release-body.md
+          # Draft creation uploads the asset before the public manifest sees it.
+          cp build/app/outputs/flutter-apk/app-release.apk jm-broadband.apk
+          gh release create "$TAG" jm-broadband.apk --draft --title "$TAG" --notes-file release-body.md --target "$(git rev-parse HEAD)"
+          gh release edit "$TAG" --draft=false --latest

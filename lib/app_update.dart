@@ -44,6 +44,20 @@ class AppUpdater {
   static bool _sameOrigin(Uri a, Uri b) =>
     a.scheme == b.scheme && a.host == b.host && a.port == b.port;
 
+  /// Panel redirect -> official project release -> GitHub release asset CDN.
+  /// An APK still has to match GitHub's advertised SHA-256 and exact byte count.
+  static bool trustedDownloadRedirect(Uri uri, Uri panelUrl) {
+    if (uri.scheme != 'https' || uri.userInfo.isNotEmpty) return false;
+    if (_sameOrigin(uri, panelUrl)) return true;
+    if (uri.host == 'github.com' && uri.port == 443) {
+      return uri.path.startsWith(
+          '/mahin-wpdev/jm-broadband-android/releases/download/');
+    }
+    return uri.port == 443 &&
+        (uri.host == 'release-assets.githubusercontent.com' ||
+         uri.host == 'objects.githubusercontent.com');
+  }
+
   static Future<AppRelease?> check(Uri apiEndpoint) async {
     final uri = manifest(apiEndpoint);
     if (uri.scheme != 'https') throw const FormatException('HTTPS required.');
@@ -79,8 +93,8 @@ class AppUpdater {
     try {
       var url = release.download;
       http.StreamedResponse? response;
-      for (var i = 0; i < 4; i++) {
-        if (!_sameOrigin(url, release.download)) {
+      for (var i = 0; i < 6; i++) {
+        if (!trustedDownloadRedirect(url, release.download)) {
           throw const FormatException('Untrusted APK redirect.');
         }
         final req = http.Request('GET', url)..followRedirects = false;
@@ -94,7 +108,7 @@ class AppUpdater {
         break;
       }
       if (response == null || response.statusCode != 200 ||
-          !_sameOrigin(url, release.download)) {
+          !trustedDownloadRedirect(url, release.download)) {
         throw StateError('APK download failed.');
       }
       sink = file.openWrite();
