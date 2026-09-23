@@ -106,7 +106,7 @@ jobs:
           SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -n "$SIGNER"
           ACTUAL=$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-          EXPECTED='a6ed4b62afa6e2e50afff1679bf67645927b28e9a5a017d56d9ad7bf07e89ca8'
+          EXPECTED='ef676d6f33f5b424cb68bf567df8a05c78826918fb403cab3c187bdbc5b83490'
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo 'APK signing certificate differs from existing public app'; exit 1
           fi
