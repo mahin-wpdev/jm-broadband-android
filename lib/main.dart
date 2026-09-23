@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'app_update.dart';
 import 'panel_workspace.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -224,13 +225,44 @@ class JmApp extends StatefulWidget {
   State<JmApp> createState() => _JmAppState();
 }
 
-class _JmAppState extends State<JmApp> {
+class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   late final MobileApi api = widget.initialApi ?? MobileApi();
   bool loading = true;
+  bool checkingUpdate = false;
+  AppRelease? updateRelease;
+  static final Uri _defaultUpdateEndpoint =
+      normalizeServer('https://27.147.201.165/panel');
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _boot();
+  }
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !loading && updateRelease == null) {
+      _checkForUpdate();
+    }
+  }
+  Future<bool> _checkForUpdate({Uri? endpoint, bool manual = false}) async {
+    if (checkingUpdate) return updateRelease != null;
+    checkingUpdate = true;
+    try {
+      final release = await AppUpdater.check(
+          endpoint ?? api.endpoint ?? _defaultUpdateEndpoint);
+      if (mounted) setState(() => updateRelease = release);
+      return release != null;
+    } catch (_) {
+      if (manual) rethrow;
+      return false;
+    } finally {
+      checkingUpdate = false;
+    }
   }
 
   Future<void> _boot() async {
@@ -242,9 +274,9 @@ class _JmAppState extends State<JmApp> {
       api.refreshToken = null;
       api.user = null;
       api.endpoint = null;
-    } finally {
-      if (mounted) setState(() => loading = false);
     }
+    await _checkForUpdate(endpoint: api.endpoint ?? _defaultUpdateEndpoint);
+    if (mounted) setState(() => loading = false);
   }
 
   @override
@@ -257,9 +289,20 @@ class _JmAppState extends State<JmApp> {
                 ColorScheme.fromSeed(seedColor: const Color(0xFF10A88B))),
         home: loading
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-            : api.user == null
-                ? LoginScreen(api: api, onLogin: () => setState(() {}))
-                : RoleDashboard(api: api, onLogout: () => setState(() {})),
+            : updateRelease != null
+                ? AppUpdatePage(release: updateRelease!,
+                    onLater: updateRelease!.required
+                        ? null
+                        : () => setState(() => updateRelease = null))
+                : api.user == null
+                    ? LoginScreen(api: api, onLogin: () async {
+                        await _checkForUpdate(endpoint: api.endpoint);
+                        if (mounted) setState(() {});
+                      })
+                    : RoleDashboard(api: api,
+                        onLogout: () => setState(() {}),
+                        onCheckForUpdates: () => _checkForUpdate(
+                            endpoint: api.endpoint, manual: true)),
       );
 }
 
@@ -374,7 +417,9 @@ class _LoginScreenState extends State<LoginScreen> {
 class RoleDashboard extends StatelessWidget {
   final MobileApi api;
   final VoidCallback onLogout;
-  const RoleDashboard({super.key, required this.api, required this.onLogout});
+  final Future<bool> Function() onCheckForUpdates;
+  const RoleDashboard({super.key, required this.api,
+      required this.onLogout, required this.onCheckForUpdates});
   @override
   Widget build(BuildContext context) {
     final user = api.user ?? {};
@@ -393,6 +438,7 @@ class RoleDashboard extends StatelessWidget {
       },
       trafficHistoryKey: 'arivo:traffic:${api.endpoint}:${user['role']}:'
           '${user['id'] ?? user['username']}',
+      onCheckForUpdates: onCheckForUpdates,
       onLogout: () async {
         await api.logout();
         onLogout();

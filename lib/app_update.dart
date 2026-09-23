@@ -1,0 +1,202 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+
+class AppRelease {
+  final String version, sha256, notes;
+  final int build, bytes;
+  final bool required;
+  final Uri download;
+  const AppRelease({required this.version, required this.sha256,
+    required this.notes, required this.build, required this.bytes,
+    required this.required, required this.download});
+
+  factory AppRelease.fromJson(Map<String, dynamic> data) {
+    final build = int.tryParse((data['build_number'] ?? '').toString()) ?? 0;
+    final bytes = int.tryParse((data['bytes'] ?? '').toString()) ?? 0;
+    final hash = (data['sha256'] ?? '').toString().toLowerCase();
+    final url = Uri.tryParse((data['download_url'] ?? '').toString());
+    if (build < 1 || bytes < 10000 ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(hash) ||
+        url == null || url.scheme != 'https' || url.host.isEmpty) {
+      throw const FormatException('Invalid app update information.');
+    }
+    return AppRelease(version: (data['version'] ?? '').toString(),
+      sha256: hash, notes: (data['notes'] ?? '').toString(),
+      build: build, bytes: bytes, required: data['required_update'] == true,
+      download: url);
+  }
+}
+
+class AppUpdater {
+  static Uri manifest(Uri apiEndpoint) {
+    final path = apiEndpoint.path.replaceFirst(
+      RegExp(r'/mobile-api\.php$'), '/mobile-app-version.php');
+    return apiEndpoint.replace(path: path, query: null, fragment: null);
+  }
+  static bool _sameOrigin(Uri a, Uri b) =>
+    a.scheme == b.scheme && a.host == b.host && a.port == b.port;
+
+  static Future<AppRelease?> check(Uri apiEndpoint) async {
+    final uri = manifest(apiEndpoint);
+    if (uri.scheme != 'https') throw const FormatException('HTTPS required.');
+    final client = http.Client();
+    try {
+      final request = http.Request('GET', uri)..followRedirects = false;
+      final stream = await client.send(request).timeout(const Duration(seconds: 8));
+      final response = await http.Response.fromStream(stream).timeout(
+          const Duration(seconds: 8));
+      if (response.statusCode == 404) return null;
+      if (response.statusCode != 200) throw StateError('Update server unavailable.');
+      final raw = jsonDecode(response.body);
+      if (raw is! Map<String, dynamic>) throw const FormatException('Invalid JSON.');
+      final release = AppRelease.fromJson(raw);
+      if (!_sameOrigin(release.download, uri)) {
+        throw const FormatException('Update server origin mismatch.');
+      }
+      final info = await PackageInfo.fromPlatform();
+      final installed = int.tryParse(info.buildNumber) ?? 0;
+      return release.build > installed ? release : null;
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<File> download(AppRelease release,
+    void Function(double fraction) onProgress) async {
+    if (!Platform.isAndroid) throw StateError('Android is required.');
+    final cache = await getTemporaryDirectory();
+    final file = File('${cache.path}/jm-broadband-${release.build}.apk');
+    final client = http.Client();
+    IOSink? sink;
+    try {
+      var url = release.download;
+      http.StreamedResponse? response;
+      for (var i = 0; i < 4; i++) {
+        if (!_sameOrigin(url, release.download)) {
+          throw const FormatException('Untrusted APK redirect.');
+        }
+        final req = http.Request('GET', url)..followRedirects = false;
+        response = await client.send(req).timeout(const Duration(seconds: 30));
+        if ([301, 302, 303, 307, 308].contains(response.statusCode)) {
+          final next = response.headers['location'];
+          if (next == null) throw StateError('APK redirect missing URL.');
+          url = url.resolve(next);
+          continue;
+        }
+        break;
+      }
+      if (response == null || response.statusCode != 200 ||
+          !_sameOrigin(url, release.download)) {
+        throw StateError('APK download failed.');
+      }
+      sink = file.openWrite();
+      var received = 0;
+      await for (final bytes in response.stream.timeout(const Duration(seconds: 40))) {
+        sink.add(bytes);
+        received += bytes.length;
+        if (received > release.bytes) throw StateError('APK size mismatch.');
+        onProgress(received / release.bytes);
+      }
+      await sink.flush();
+      await sink.close();
+      sink = null;
+      if (await file.length() != release.bytes) {
+        throw StateError('APK download incomplete.');
+      }
+      final actual = (await sha256.bind(file.openRead()).first).toString();
+      if (actual != release.sha256) throw StateError('APK SHA-256 mismatch.');
+      return file;
+    } catch (_) {
+      if (sink != null) await sink.close();
+      if (await file.exists()) await file.delete();
+      rethrow;
+    } finally {
+      client.close();
+    }
+  }
+}
+
+class AppUpdatePage extends StatefulWidget {
+  final AppRelease release;
+  final VoidCallback? onLater;
+  const AppUpdatePage({super.key, required this.release, this.onLater});
+  @override
+  State<AppUpdatePage> createState() => _AppUpdatePageState();
+}
+
+class _AppUpdatePageState extends State<AppUpdatePage> {
+  bool busy = false;
+  double progress = 0;
+  String? error;
+  Future<void> install() async {
+    if (busy) return;
+    setState(() { busy = true; progress = 0; error = null; });
+    try {
+      final apk = await AppUpdater.download(widget.release, (value) {
+        if (mounted) setState(() => progress = value);
+      });
+      final result = await OpenFilex.open(apk.path,
+        type: 'application/vnd.android.package-archive');
+      if (result.type != ResultType.done) throw StateError(result.message);
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !widget.release.required,
+    child: Scaffold(
+      appBar: AppBar(automaticallyImplyLeading: !widget.release.required,
+        title: Text(widget.release.required ? 'Update required' : 'App update')),
+      body: Center(child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.system_update_alt, size: 64),
+            const SizedBox(height: 20),
+            Text('Version ${widget.release.version}',
+              style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 14),
+            Text(widget.release.required
+              ? 'Install this update to continue using JM Broadband.'
+              : 'A newer version of JM Broadband is available.',
+              textAlign: TextAlign.center),
+            if (widget.release.notes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(widget.release.notes, textAlign: TextAlign.center),
+            ],
+            if (busy) ...[
+              const SizedBox(height: 16),
+              LinearProgressIndicator(value: progress),
+              Text('${(progress * 100).round()}% downloaded'),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: 16),
+              Text(error!, style: const TextStyle(color: Colors.red)),
+            ],
+            const SizedBox(height: 24),
+            FilledButton.icon(onPressed: busy ? null : install,
+              icon: const Icon(Icons.download),
+              label: Text(busy ? 'Downloading…' : 'Download & Install')),
+            if (!widget.release.required)
+              TextButton(onPressed: widget.onLater ?? () => Navigator.maybePop(context),
+                child: const Text('Later')),
+            const SizedBox(height: 14),
+            const Text('Android will ask you to confirm installation.',
+              textAlign: TextAlign.center),
+          ]),
+        ),
+      )),
+    ),
+  );
+}

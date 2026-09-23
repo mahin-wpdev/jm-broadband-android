@@ -23,6 +23,7 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
       },
       loadTraffic: () async => {},
       onLogout: () async {},
+      onCheckForUpdates: () async => false,
     ),
   ));
   await tester.pumpAndSettle();

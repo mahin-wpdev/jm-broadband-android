@@ -1,7 +1,7 @@
 name: jm_broadband_app
 description: Unified server-selectable ISP mobile app foundation.
 publish_to: none
-version: 1.0.7+8
+version: 1.0.8+9
 environment:
   sdk: '>=3.3.0 <4.0.0'
 dependencies:
@@ -9,6 +9,10 @@ dependencies:
     sdk: flutter
   http: ^1.3.0
   flutter_secure_storage: ^9.2.4
+  crypto: ^3.0.7
+  package_info_plus: ^9.0.1
+  path_provider: ^2.1.6
+  open_filex: ^4.7.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

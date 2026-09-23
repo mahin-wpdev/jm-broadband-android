@@ -10,6 +10,7 @@ class PanelWorkspace extends StatefulWidget {
   final Future<Map<String, dynamic>> Function() loadTraffic;
   final String trafficHistoryKey;
   final Future<void> Function() onLogout;
+  final Future<bool> Function() onCheckForUpdates;
 
   const PanelWorkspace({
     super.key,
@@ -19,6 +20,7 @@ class PanelWorkspace extends StatefulWidget {
     required this.loadTraffic,
     required this.trafficHistoryKey,
     required this.onLogout,
+    required this.onCheckForUpdates,
   });
 
   @override
@@ -89,6 +91,26 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
       appBar: AppBar(
         title: Text('Arivo · ${page.title}'),
         actions: [
+          IconButton(
+            tooltip: 'Check for app updates',
+            onPressed: () async {
+              try {
+                final found = await widget.onCheckForUpdates();
+                if (!found && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('You have the latest app version.')),
+                  );
+                }
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not check for updates.')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.system_update_outlined),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: (page.section == 'account' ||
