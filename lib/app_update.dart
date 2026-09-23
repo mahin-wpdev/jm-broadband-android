@@ -67,7 +67,11 @@ class AppUpdater {
       final stream = await client.send(request).timeout(const Duration(seconds: 8));
       final response = await http.Response.fromStream(stream).timeout(
           const Duration(seconds: 8));
-      if (response.statusCode == 404) return null;
+      // 404 means the update endpoint or GitHub release is missing, not that
+      // the installed app is the latest. Manual checks must report failure.
+      if (response.statusCode == 404) {
+        throw StateError('Update manifest is not published yet.');
+      }
       if (response.statusCode != 200) throw StateError('Update server unavailable.');
       final raw = jsonDecode(response.body);
       if (raw is! Map<String, dynamic>) throw const FormatException('Invalid JSON.');
