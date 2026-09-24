@@ -105,8 +105,10 @@ jobs:
           APK='build/app/outputs/flutter-apk/app-release.apk'
           SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -n "$SIGNER"
-          ACTUAL=$("$SIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          CERTS=$("$SIGNER" verify --print-certs "$APK")
+          ACTUAL=$(printf '%s\n' "$CERTS" | sed -nE 's/^Signer #1 certificate SHA-256 digest:[[:space:]]*([[:xdigit:]]{64})[[:space:]]*$/\1/p' | tr '[:upper:]' '[:lower:]')
           EXPECTED='ef676d6f33f5b424cb68bf567df8a05c78826918fb403cab3c187bdbc5b83490'
+          echo "APK signer SHA-256: ${ACTUAL:-[not detected]}"
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo 'APK signing certificate differs from existing public app'; exit 1
           fi
