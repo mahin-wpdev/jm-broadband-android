@@ -275,8 +275,12 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
       api.user = null;
       api.endpoint = null;
     }
-    await _checkForUpdate(endpoint: api.endpoint ?? _defaultUpdateEndpoint);
-    if (mounted) setState(() => loading = false);
+    if (!mounted) return;
+    // A broken mobile-data route to the update endpoint must never hold
+    // the splash screen hostage while the user needs the sign-in UI.
+    setState(() => loading = false);
+    unawaited(_checkForUpdate(
+        endpoint: api.endpoint ?? _defaultUpdateEndpoint));
   }
 
   @override
