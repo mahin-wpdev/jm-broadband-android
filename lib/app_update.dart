@@ -154,9 +154,9 @@ class AppUpdater {
       try {
         final request = http.Request('GET', uri)..followRedirects = false;
         final stream =
-            await client.send(request).timeout(const Duration(seconds: 8));
+            await client.send(request).timeout(const Duration(seconds: 5));
         final response = await http.Response.fromStream(stream)
-            .timeout(const Duration(seconds: 8));
+            .timeout(const Duration(seconds: 5));
         if (response.statusCode == 404 ||
             response.statusCode == 429 ||
             response.statusCode >= 500) {
@@ -174,6 +174,8 @@ class AppUpdater {
           throw const FormatException('Update server origin mismatch.');
         }
       } on SocketException {
+        release = await _officialRelease(client);
+      } on http.ClientException {
         release = await _officialRelease(client);
       } on HandshakeException {
         release = await _officialRelease(client);
