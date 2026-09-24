@@ -57,5 +57,15 @@ void main() {
     await tester.tap(find.byType(ListTile).last);
     await tester.pumpAndSettle();
     expect(find.text('Review & recharge'), findsOneWidget);
+    await tester.tap(find.text('Review & recharge'));
+    await tester.pumpAndSettle();
+    final confirm = find.widgetWithText(FilledButton, 'Recharge now');
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(find.byType(TextField).last, 'wrong-user');
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.enterText(find.byType(TextField).last, 'test-user');
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
   });
 }
