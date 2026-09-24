@@ -30,6 +30,8 @@ Future<void> showRole(WidgetTester tester, String role) async {
       role: role,
       name: 'Test User',
       load: fakeSection,
+      searchRecharge: (_) async => {'available': true, 'items': []},
+      recharge: (_) async => {'invoice': 'INV-TEST'},
       loadTraffic: fakeTraffic,
       trafficHistoryKey: 'widget-test-$role',
       onLogout: () async {},

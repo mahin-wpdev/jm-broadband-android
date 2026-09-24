@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'live_traffic.dart';
+import 'admin_recharge_page.dart';
 import 'server_traffic_peak.dart';
 
 /// Actual read-only Panel data. The client never supplies an actor/customer ID.
@@ -9,6 +10,9 @@ class PanelWorkspace extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(String section) load;
   final Future<Map<String, dynamic>> Function() loadTraffic;
   final String trafficHistoryKey;
+  final Future<Map<String, dynamic>> Function(String query) searchRecharge;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> request)
+      recharge;
   final Future<void> Function() onLogout;
   final Future<bool> Function() onCheckForUpdates;
 
@@ -19,6 +23,8 @@ class PanelWorkspace extends StatefulWidget {
     required this.load,
     required this.loadTraffic,
     required this.trafficHistoryKey,
+    required this.searchRecharge,
+    required this.recharge,
     required this.onLogout,
     required this.onCheckForUpdates,
   });
@@ -52,6 +58,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('Customers', 'customers', Icons.group_outlined),
             _Page('Resellers', 'resellers', Icons.groups_outlined),
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
+            _Page('Recharge', 'recharge', Icons.add_card_outlined),
             _Page('More', 'more', Icons.apps_outlined),
           ],
       };
@@ -66,10 +73,12 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
     setState(() {
       selected = index;
       final section = pages[index].section;
-      pending =
-          (section == 'account' || section == 'more' || section == 'traffic')
-              ? Future.value(<String, dynamic>{'available': true})
-              : widget.load(section);
+      pending = (section == 'account' ||
+              section == 'more' ||
+              section == 'traffic' ||
+              section == 'recharge')
+          ? Future.value(<String, dynamic>{'available': true})
+          : widget.load(section);
     });
   }
 
@@ -98,13 +107,15 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                 final found = await widget.onCheckForUpdates();
                 if (!found && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('You have the latest app version.')),
+                    const SnackBar(
+                        content: Text('You have the latest app version.')),
                   );
                 }
               } catch (_) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Could not check for updates.')),
+                    const SnackBar(
+                        content: Text('Could not check for updates.')),
                   );
                 }
               }
@@ -115,7 +126,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             tooltip: 'Refresh',
             onPressed: (page.section == 'account' ||
                     page.section == 'more' ||
-                    page.section == 'traffic')
+                    page.section == 'traffic' ||
+                    page.section == 'recharge')
                 ? null
                 : refresh,
             icon: const Icon(Icons.refresh),
@@ -132,6 +144,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
         'traffic' => LiveTrafficPage(
             load: widget.loadTraffic, historyKey: widget.trafficHistoryKey),
         'more' => _MorePage(load: widget.load),
+        'recharge' => AdminRechargePage(
+            search: widget.searchRecharge, recharge: widget.recharge),
         _ => FutureBuilder<Map<String, dynamic>>(
             future: pending,
             builder: (context, snapshot) {
