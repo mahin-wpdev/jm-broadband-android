@@ -86,13 +86,19 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                   'can mark additional bills paid in phpNuxBill. '
                   'It does NOT collect or verify a bKash/Nagad payment. '
                   'Check the amount and payment independently.'),
+              TextField(
+                onChanged: (value) => update(() => confirmation = value.trim()),
+                decoration: const InputDecoration(
+                  labelText: 'Type the customer username to confirm',
+                ),
+              ),
               CheckboxListTile(
                 value: verified,
                 onChanged: (value) => update(() => verified = value == true),
                 title: const Text('I have verified payment outside the app'),
               ),
               TextField(
-                onChanged: (value) => password = value,
+                onChanged: (value) => update(() => password = value),
                 obscureText: true,
                 decoration: const InputDecoration(
                   labelText: 'Confirm admin password',
@@ -106,7 +112,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: !verified
+              onPressed: !verified || confirmation != user['username']
                   ? null
                   : () {
                       if (password.isNotEmpty) {
