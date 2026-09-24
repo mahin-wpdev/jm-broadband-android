@@ -133,3 +133,33 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk jm-broadband.apk
           gh release create "$TAG" jm-broadband.apk --draft --title "$TAG" --notes-file release-body.md --target "$(git rev-parse HEAD)"
           gh release edit "$TAG" --draft=false --latest
+
+      - name: Publish public static update manifest (no rate-limited API for customers)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST="$RUNNER_TEMP/jm-mobile-release.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+            --jq '{tag_name,published_at,draft,prerelease,body,assets:[.assets[]|select(.name=="jm-broadband.apk" and .state=="uploaded")|{name,state,size,digest,browser_download_url}]}' > "$MANIFEST"
+          python3 - "$MANIFEST" "$TAG" <<'PY'
+          import json, re, sys
+          data = json.load(open(sys.argv[1], encoding="utf-8"))
+          assets = data.get("assets") or []
+          assert data["tag_name"] == sys.argv[2] and data.get("published_at")
+          assert not data["draft"] and not data["prerelease"] and len(assets) == 1
+          assert re.fullmatch(r"sha256:[0-9a-f]{64}", assets[0]["digest"])
+          assert assets[0]["size"] > 10000
+          PY
+          git fetch origin main
+          git switch -C main origin/main
+          cp "$MANIFEST" mobile-release.json
+          git add -- mobile-release.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m "chore(release): publish GitHub APK manifest for $TAG"
+            git push origin HEAD:main
+          fi
