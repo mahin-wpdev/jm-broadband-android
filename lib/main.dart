@@ -37,9 +37,16 @@ Uri normalizeServer(String input) {
     throw const FormatException(
         'Use a valid HTTPS domain or IP and optional /panel path');
   }
-  final path = uri.path.replaceAll(RegExp(r'/+$'), '');
-  if (path.endsWith('/mobile-api.php')) return uri.replace(path: path);
-  return uri.replace(path: '$path/mobile-api.php');
+  // This public IP accepts HTTPS from LTE on 8443; the existing 443 path
+  // remains available when the user explicitly enters :443.
+  final useJmMobilePort = uri.host == '27.147.201.165' &&
+      uri.port == 443 &&
+      !RegExp(r':443(?:/|$)').hasMatch(value);
+  final effective = useJmMobilePort ? uri.replace(port: 8443) : uri;
+  var path = effective.path.replaceAll(RegExp(r'/+$'), '');
+  if (effective.host == '27.147.201.165' && path.isEmpty) path = '/panel';
+  if (path.endsWith('/mobile-api.php')) return effective.replace(path: path);
+  return effective.replace(path: '$path/mobile-api.php');
 }
 
 // An Android key-reset result is not a saved server address.
@@ -85,7 +92,18 @@ class MobileApi {
       final restoredEndpoint = restoredServerUri(server);
       if (restoredEndpoint == null) return;
       endpoint = restoredEndpoint;
-      refreshToken = await _storage.read(key: 'refresh:${endpoint.toString()}');
+      final newTokenKey = 'refresh:${endpoint.toString()}';
+      refreshToken = await _storage.read(key: newTokenKey);
+      // Migrate the old :443 session to the LTE-safe :8443 entrypoint
+      // without deleting the previous saved token or reinstalling the app.
+      if (refreshToken == null &&
+          server != null &&
+          server != endpoint.toString()) {
+        refreshToken = await _storage.read(key: 'refresh:$server');
+        if (refreshToken != null) {
+          await _storage.write(key: newTokenKey, value: refreshToken);
+        }
+      }
       if (refreshToken != null) await refresh();
       if (accessToken != null) await me();
     } catch (_) {
@@ -238,17 +256,22 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _boot();
   }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !loading && updateRelease == null) {
+    if (state == AppLifecycleState.resumed &&
+        !loading &&
+        updateRelease == null) {
       _checkForUpdate();
     }
   }
+
   Future<bool> _checkForUpdate({Uri? endpoint, bool manual = false}) async {
     if (checkingUpdate) return updateRelease != null;
     checkingUpdate = true;
@@ -279,8 +302,8 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
     // A broken mobile-data route to the update endpoint must never hold
     // the splash screen hostage while the user needs the sign-in UI.
     setState(() => loading = false);
-    unawaited(_checkForUpdate(
-        endpoint: api.endpoint ?? _defaultUpdateEndpoint));
+    unawaited(
+        _checkForUpdate(endpoint: api.endpoint ?? _defaultUpdateEndpoint));
   }
 
   @override
@@ -294,16 +317,20 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
         home: loading
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
             : updateRelease != null
-                ? AppUpdatePage(release: updateRelease!,
+                ? AppUpdatePage(
+                    release: updateRelease!,
                     onLater: updateRelease!.required
                         ? null
                         : () => setState(() => updateRelease = null))
                 : api.user == null
-                    ? LoginScreen(api: api, onLogin: () async {
-                        await _checkForUpdate(endpoint: api.endpoint);
-                        if (mounted) setState(() {});
-                      })
-                    : RoleDashboard(api: api,
+                    ? LoginScreen(
+                        api: api,
+                        onLogin: () async {
+                          await _checkForUpdate(endpoint: api.endpoint);
+                          if (mounted) setState(() {});
+                        })
+                    : RoleDashboard(
+                        api: api,
                         onLogout: () => setState(() {}),
                         onCheckForUpdates: () => _checkForUpdate(
                             endpoint: api.endpoint, manual: true)),
@@ -329,7 +356,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     server.text =
         widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ??
-            'https://27.147.201.165/panel';
+            'https://27.147.201.165:8443/panel';
   }
 
   @override
@@ -422,8 +449,11 @@ class RoleDashboard extends StatelessWidget {
   final MobileApi api;
   final VoidCallback onLogout;
   final Future<bool> Function() onCheckForUpdates;
-  const RoleDashboard({super.key, required this.api,
-      required this.onLogout, required this.onCheckForUpdates});
+  const RoleDashboard(
+      {super.key,
+      required this.api,
+      required this.onLogout,
+      required this.onCheckForUpdates});
   @override
   Widget build(BuildContext context) {
     final user = api.user ?? {};

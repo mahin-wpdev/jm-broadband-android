@@ -2,6 +2,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jm_broadband_app/main.dart';
 
 void main() {
+  test('JM public IP defaults to TLS-verified mobile-safe 8443', () {
+    expect(normalizeServer('https://27.147.201.165/panel').toString(),
+        'https://27.147.201.165:8443/panel/mobile-api.php');
+    expect(normalizeServer('27.147.201.165').toString(),
+        'https://27.147.201.165:8443/panel/mobile-api.php');
+    expect(
+        restoredServerUri('https://27.147.201.165/panel/mobile-api.php')!.port,
+        8443);
+  });
+  test('explicit 443, explicit 8443, and unrelated servers are respected', () {
+    expect(normalizeServer('https://27.147.201.165:443/panel').port, 443);
+    expect(normalizeServer('https://27.147.201.165:8443/panel').port, 8443);
+    expect(normalizeServer('https://isp.example.com/panel').port, 443);
+  });
   test('adds HTTPS and API path', () {
     expect(normalizeServer('isp.example.com/panel').toString(),
         'https://isp.example.com/panel/mobile-api.php');
