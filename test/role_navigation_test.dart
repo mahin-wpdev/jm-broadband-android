@@ -31,6 +31,7 @@ Future<void> showRole(WidgetTester tester, String role) async {
       name: 'Test User',
       load: fakeSection,
       searchRecharge: (_) async => {'available': true, 'items': []},
+      rechargeOptions: (_) async => {'customer': {}, 'items': []},
       recharge: (_) async => {'invoice': 'INV-TEST'},
       loadTraffic: fakeTraffic,
       trafficHistoryKey: 'widget-test-$role',

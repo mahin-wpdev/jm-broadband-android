@@ -6,10 +6,14 @@ class AdminRechargePage extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(String query) search;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> data)
       recharge;
+  final Future<Map<String, dynamic>> Function(int customerId) options;
+  final String? initialUsername;
   const AdminRechargePage({
     super.key,
     required this.search,
     required this.recharge,
+    required this.options,
+    this.initialUsername,
   });
 
   @override
@@ -20,11 +24,23 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
   final searchInput = TextEditingController();
   List<Map<String, dynamic>> matches = [];
   Map<String, dynamic>? selected;
+  List<Map<String, dynamic>> plans = [];
+  int? chosenPlanId;
   String? requestKey;
   String? error;
   String? success;
   bool loading = false;
   bool busy = false;
+  @override
+  void initState() {
+    super.initState();
+    final username = widget.initialUsername;
+    if (username != null && username.isNotEmpty) {
+      searchInput.text = username;
+      WidgetsBinding.instance.addPostFrameCallback((_) => findCustomer());
+    }
+  }
+
   @override
   void dispose() {
     searchInput.dispose();
@@ -43,6 +59,8 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
     if (q.length < 2 || loading || busy) return;
     setState(() {
       selected = null;
+      plans = [];
+      chosenPlanId = null;
       requestKey = null;
       matches = [];
       loading = true;
@@ -59,6 +77,15 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
             .map((r) => Map<String, dynamic>.from(r))
             .toList();
       });
+      if (widget.initialUsername != null) {
+        for (final match in matches) {
+          if (match['username'] == widget.initialUsername &&
+              match['can_recharge'] == true) {
+            await selectCustomer(match);
+            break;
+          }
+        }
+      }
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     } finally {
@@ -66,7 +93,45 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
     }
   }
 
-  Future<String?> confirmRecharge(Map<String, dynamic> user) async {
+  Future<void> selectCustomer(Map<String, dynamic> row) async {
+    if (busy) return;
+    setState(() {
+      selected = null;
+      plans = [];
+      chosenPlanId = null;
+      requestKey = null;
+      loading = true;
+      error = null;
+      success = null;
+    });
+    try {
+      final response = await widget.options(int.parse('${row['id']}'));
+      if (!mounted) return;
+      final customer = Map<String, dynamic>.from(response['customer'] as Map);
+      final eligible = ((response['items'] as List?) ?? [])
+          .whereType<Map>()
+          .map((p) => Map<String, dynamic>.from(p))
+          .toList();
+      if (eligible.isEmpty) {
+        throw StateError('No compatible active packages available');
+      }
+      setState(() {
+        selected = customer;
+        plans = eligible;
+        chosenPlanId =
+            eligible.any((p) => '${p['id']}' == '${customer['plan_id']}')
+                ? int.parse('${customer['plan_id']}')
+                : null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<String?> confirmRecharge(
+      Map<String, dynamic> user, Map<String, dynamic> package) async {
     String password = '';
     String confirmation = '';
     bool verified = false;
@@ -78,9 +143,10 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Text('Customer: ${user['username']}'),
-              Text('Plan: ${user['name_plan']}'),
+              Text('Current plan: ${user['name_plan']}'),
+              Text('Selected plan: ${package['name_plan']}'),
               Text('Router: ${user['routers']}'),
-              Text('Package price: ৳${user['price']}'),
+              Text('Selected package price: ৳${package['price']}'),
               const SizedBox(height: 12),
               const Text('This renews service, records an invoice and '
                   'can mark additional bills paid in phpNuxBill. '
@@ -129,8 +195,11 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
 
   Future<void> submit() async {
     final customer = selected;
-    if (customer == null || busy) return;
-    final password = await confirmRecharge(customer);
+    final package = plans
+        .where((p) => int.tryParse('${p['id']}') == chosenPlanId)
+        .firstOrNull;
+    if (customer == null || package == null || busy) return;
+    final password = await confirmRecharge(customer, package);
     if (password == null || !mounted) return;
     requestKey ??= newRequestKey();
     setState(() {
@@ -142,6 +211,8 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
       final result = await widget.recharge({
         'customer_id': customer['id'],
         'username': customer['username'],
+        'plan_id': chosenPlanId,
+        'expected_plan_id': customer['plan_id'],
         'request_key': requestKey,
         'admin_password': password,
         'payment_verified': true,
@@ -152,6 +223,8 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
             'Invoice: ${result['invoice']}.';
         matches = [];
         selected = null;
+        plans = [];
+        chosenPlanId = null;
         requestKey = null;
       });
     } catch (e) {
@@ -197,10 +270,33 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
               child: Column(children: [
                 Text('Selected: ${selected!['fullname']} '
                     '(${selected!['username']})'),
-                Text('${selected!['name_plan']} · '
+                Text('Current: ${selected!['name_plan']} · '
                     '৳${selected!['price']}'),
+                DropdownButtonFormField<int>(
+                  key: ValueKey(selected!['id']),
+                  initialValue: chosenPlanId,
+                  isExpanded: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Recharge package'),
+                  items: [
+                    for (final plan in plans)
+                      DropdownMenuItem<int>(
+                        value: int.parse('${plan['id']}'),
+                        child: Text('${plan['name_plan']} · ৳${plan['price']}'),
+                      ),
+                  ],
+                  onChanged: busy
+                      ? null
+                      : (value) => setState(() {
+                            chosenPlanId = value;
+                            requestKey = null;
+                          }),
+                ),
+                const Text(
+                    'Changing package and renewal happen in one recharge. '
+                    'Verify total invoice, tax and other bills in the Panel.'),
                 FilledButton.icon(
-                  onPressed: busy ? null : submit,
+                  onPressed: busy || chosenPlanId == null ? null : submit,
                   icon: const Icon(Icons.payment),
                   label: Text(busy ? 'Processing…' : 'Review & recharge'),
                 ),
@@ -220,16 +316,17 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                     ? '${user['name_plan']} · ${user['routers']} · '
                         '৳${user['price']}'
                     : 'No existing plan or account inactive'),
-                enabled: eligible && !busy,
+                enabled: eligible && !busy && !loading,
                 selected: selected?['id'] == user['id'],
-                onTap: !eligible || busy
-                    ? null
-                    : () => setState(() {
-                          selected = user;
-                          requestKey = null;
-                          error = null;
-                          success = null;
-                        }),
+                trailing: FilledButton(
+                  onPressed: eligible && !busy && !loading
+                      ? () => selectCustomer(user)
+                      : null,
+                  child: const Text('Recharge'),
+                ),
+                onTap: eligible && !busy && !loading
+                    ? () => selectCustomer(user)
+                    : null,
               ));
             },
           )),

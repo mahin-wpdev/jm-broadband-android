@@ -471,6 +471,11 @@ class RoleDashboard extends StatelessWidget {
             await api.request('admin-recharge-search', query: {'q': query});
         return Map<String, dynamic>.from(response['data'] as Map);
       },
+      rechargeOptions: (customerId) async {
+        final response = await api.request('admin-recharge-options',
+            query: {'customer_id': '$customerId'});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
       recharge: (request) async {
         final response = await api.request('admin-recharge', body: request);
         return Map<String, dynamic>.from(response['data'] as Map);

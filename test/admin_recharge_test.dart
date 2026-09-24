@@ -11,7 +11,20 @@ Future<void> showRechargeRole(WidgetTester tester, String role) async {
     home: PanelWorkspace(
       role: role,
       name: 'Test user',
-      load: (_) async => {'available': true, 'role': role, 'items': []},
+      load: (section) async => {
+        'available': true,
+        'role': role,
+        'items': section == 'customers'
+            ? [
+                {
+                  'id': 1,
+                  'username': 'test-user',
+                  'fullname': 'Test User',
+                  'status': 'Active'
+                }
+              ]
+            : []
+      },
       loadTraffic: () async => {},
       searchRecharge: (_) async => {
         'available': true,
@@ -25,6 +38,23 @@ Future<void> showRechargeRole(WidgetTester tester, String role) async {
             'routers': 'Router One',
             'price': '500.00'
           },
+        ]
+      },
+      rechargeOptions: (_) async => {
+        'available': true,
+        'customer': {
+          'id': 1,
+          'username': 'test-user',
+          'fullname': 'Test User',
+          'plan_id': 3,
+          'name_plan': '30 Mbps',
+          'price': '500.00',
+          'routers': 'Router One',
+          'status': 'Active'
+        },
+        'items': [
+          {'id': 3, 'name_plan': '30 Mbps', 'price': '500.00'},
+          {'id': 4, 'name_plan': '40 Mbps', 'price': '700.00'},
         ]
       },
       recharge: (_) async => {'invoice': 'INV-TEST-1'},
@@ -45,6 +75,18 @@ void main() {
     expect(find.text('Recharge'), findsNothing);
   });
 
+  testWidgets('admin customer card has its own recharge button',
+      (tester) async {
+    await showRechargeRole(tester, 'admin');
+    await tester.tap(find.text('Customers').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Recharge'), findsWidgets);
+    await tester.tap(find.widgetWithText(FilledButton, 'Recharge').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Admin manual recharge'), findsOneWidget);
+    expect(find.text('Review & recharge'), findsOneWidget);
+  });
+
   testWidgets('admin can search and select any named customer', (tester) async {
     await showRechargeRole(tester, 'admin');
     await tester.tap(find.text('Recharge').last);
@@ -57,6 +99,11 @@ void main() {
     await tester.tap(find.byType(ListTile).last);
     await tester.pumpAndSettle();
     expect(find.text('Review & recharge'), findsOneWidget);
+    await tester.tap(find.byType(DropdownButtonFormField<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('40 Mbps · ৳700.00').last);
+    await tester.pumpAndSettle();
+    expect(find.text('40 Mbps · ৳700.00'), findsOneWidget);
     await tester.tap(find.text('Review & recharge'));
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'Recharge now');
