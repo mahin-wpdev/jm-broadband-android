@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'live_traffic.dart';
 import 'admin_recharge_page.dart';
+import 'admin_customer_pages.dart';
 import 'server_traffic_peak.dart';
 
 /// Actual read-only Panel data. The client never supplies an actor/customer ID.
@@ -12,6 +13,10 @@ class PanelWorkspace extends StatefulWidget {
   final String trafficHistoryKey;
   final Future<Map<String, dynamic>> Function(String query) searchRecharge;
   final Future<Map<String, dynamic>> Function(int customerId) rechargeOptions;
+  final Future<Map<String, dynamic>> Function(int customerId) loadAdminProfile;
+  final Future<Map<String, dynamic>> Function(String window) loadExpiry;
+  final Future<Map<String, dynamic>> Function(int customerId, int planId)
+      rechargePreview;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> request)
       recharge;
   final Future<void> Function() onLogout;
@@ -26,6 +31,9 @@ class PanelWorkspace extends StatefulWidget {
     required this.trafficHistoryKey,
     required this.searchRecharge,
     required this.rechargeOptions,
+    required this.loadAdminProfile,
+    required this.loadExpiry,
+    required this.rechargePreview,
     required this.recharge,
     required this.onLogout,
     required this.onCheckForUpdates,
@@ -60,6 +68,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('Customers', 'customers', Icons.group_outlined),
             _Page('Resellers', 'resellers', Icons.groups_outlined),
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
+            _Page('Expiry', 'expiry', Icons.event_busy_outlined),
             _Page('Recharge', 'recharge', Icons.add_card_outlined),
             _Page('More', 'more', Icons.apps_outlined),
           ],
@@ -78,7 +87,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
       pending = (section == 'account' ||
               section == 'more' ||
               section == 'traffic' ||
-              section == 'recharge')
+              section == 'recharge' ||
+              section == 'expiry')
           ? Future.value(<String, dynamic>{'available': true})
           : widget.load(section);
     });
@@ -93,6 +103,26 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
     } catch (_) {
       // FutureBuilder renders the exact API error and exposes Retry.
     }
+  }
+
+  void openRecharge(String username) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Customer recharge')),
+            body: AdminRechargePage(
+                initialUsername: username,
+                search: widget.searchRecharge,
+                options: widget.rechargeOptions,
+                preview: widget.rechargePreview,
+                recharge: widget.recharge))));
+  }
+
+  void openCustomer(int id) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => AdminCustomerProfilePage(
+            customerId: id,
+            load: widget.loadAdminProfile,
+            onRecharge: openRecharge)));
   }
 
   @override
@@ -129,7 +159,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             onPressed: (page.section == 'account' ||
                     page.section == 'more' ||
                     page.section == 'traffic' ||
-                    page.section == 'recharge')
+                    page.section == 'recharge' ||
+                    page.section == 'expiry')
                 ? null
                 : refresh,
             icon: const Icon(Icons.refresh),
@@ -149,7 +180,10 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
         'recharge' => AdminRechargePage(
             search: widget.searchRecharge,
             options: widget.rechargeOptions,
+            preview: widget.rechargePreview,
             recharge: widget.recharge),
+        'expiry' => AdminExpiryPage(
+            load: widget.loadExpiry, onCustomer: (id) => openCustomer(id)),
         _ => FutureBuilder<Map<String, dynamic>>(
             future: pending,
             builder: (context, snapshot) {
@@ -177,23 +211,16 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                 child: _SectionView(
                   section: page.section,
                   data: data,
-                  onRecharge: (widget.role == 'admin' ||
-                              widget.role == 'superadmin') &&
-                          page.section == 'customers'
-                      ? (user) =>
-                          Navigator.of(context).push(MaterialPageRoute<void>(
-                            builder: (context) => Scaffold(
-                              appBar: AppBar(
-                                  title: const Text('Customer recharge')),
-                              body: AdminRechargePage(
-                                initialUsername: user,
-                                search: widget.searchRecharge,
-                                options: widget.rechargeOptions,
-                                recharge: widget.recharge,
-                              ),
-                            ),
-                          ))
-                      : null,
+                  onRecharge:
+                      (widget.role == 'admin' || widget.role == 'superadmin') &&
+                              page.section == 'customers'
+                          ? openRecharge
+                          : null,
+                  onProfile:
+                      (widget.role == 'admin' || widget.role == 'superadmin') &&
+                              page.section == 'customers'
+                          ? openCustomer
+                          : null,
                 ),
               );
             },
@@ -222,8 +249,12 @@ class _SectionView extends StatelessWidget {
   final String section;
   final Map<String, dynamic> data;
   final void Function(String username)? onRecharge;
+  final void Function(int customerId)? onProfile;
   const _SectionView(
-      {required this.section, required this.data, this.onRecharge});
+      {required this.section,
+      required this.data,
+      this.onRecharge,
+      this.onProfile});
 
   @override
   Widget build(BuildContext context) {
@@ -256,17 +287,19 @@ class _SectionView extends StatelessWidget {
               title: _rowTitle(map, section),
               values: map,
             ));
-            if (section == 'customers' &&
-                onRecharge != null &&
-                map['status'] == 'Active') {
-              elements.add(Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: () => onRecharge!('${map['username']}'),
-                  icon: const Icon(Icons.add_card_outlined),
-                  label: const Text('Recharge'),
-                ),
-              ));
+            if (section == 'customers' && onProfile != null) {
+              elements.add(
+                  Wrap(alignment: WrapAlignment.end, spacing: 8, children: [
+                OutlinedButton.icon(
+                    onPressed: () => onProfile!(int.parse('${map['id']}')),
+                    icon: const Icon(Icons.person_search),
+                    label: const Text('Profile / history')),
+                if (onRecharge != null && map['status'] == 'Active')
+                  FilledButton.icon(
+                      onPressed: () => onRecharge!('${map['username']}'),
+                      icon: const Icon(Icons.add_card_outlined),
+                      label: const Text('Recharge')),
+              ]));
             }
           }
         }

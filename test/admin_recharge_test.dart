@@ -57,6 +57,26 @@ Future<void> showRechargeRole(WidgetTester tester, String role) async {
           {'id': 4, 'name_plan': '40 Mbps', 'price': '700.00'},
         ]
       },
+      loadAdminProfile: (_) async => {
+        'customer': {
+          'username': 'test-user',
+          'fullname': 'Test User',
+          'status': 'Active'
+        },
+        'monthly_usage': {},
+        'transactions': [],
+        'admin_recharge_requests': []
+      },
+      loadExpiry: (_) async => {'available': true, 'count': 0, 'items': []},
+      rechargePreview: (_, __) async => {
+        'preview': {
+          'package_price_bdt': '500.00',
+          'additional_bills_bdt': '0.00',
+          'expected_recorded_amount_bdt': '500.00',
+          'period_invoice_override_bdt': null,
+          'note': 'Test preview'
+        }
+      },
       recharge: (_) async => {'invoice': 'INV-TEST-1'},
       trafficHistoryKey: 'test-$role',
       onLogout: () async {},
@@ -73,6 +93,25 @@ void main() {
     expect(find.text('Recharge'), findsNothing);
     await showRechargeRole(tester, 'reseller');
     expect(find.text('Recharge'), findsNothing);
+  });
+
+  testWidgets('expiry dashboard and profile are admin-only', (tester) async {
+    await showRechargeRole(tester, 'customer');
+    expect(find.text('Expiry'), findsNothing);
+    await showRechargeRole(tester, 'reseller');
+    expect(find.text('Expiry'), findsNothing);
+    await showRechargeRole(tester, 'admin');
+    await tester.tap(find.text('Expiry').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Expiry period'), findsOneWidget);
+    expect(find.text('Customers: 0'), findsOneWidget);
+    await tester.tap(find.text('Customers').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Profile / history').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Customer profile'), findsOneWidget);
+    expect(find.text('Recorded transaction history'), findsOneWidget);
+    expect(find.text('Recharge / change package'), findsOneWidget);
   });
 
   testWidgets('admin customer card has its own recharge button',

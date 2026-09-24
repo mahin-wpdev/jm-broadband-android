@@ -23,6 +23,26 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
       },
       searchRecharge: (_) async => {'available': true, 'items': []},
       rechargeOptions: (_) async => {'customer': {}, 'items': []},
+      loadAdminProfile: (_) async => {
+        'customer': {
+          'username': 'test-user',
+          'fullname': 'Test User',
+          'status': 'Active'
+        },
+        'monthly_usage': {},
+        'transactions': [],
+        'admin_recharge_requests': []
+      },
+      loadExpiry: (_) async => {'available': true, 'count': 0, 'items': []},
+      rechargePreview: (_, __) async => {
+        'preview': {
+          'package_price_bdt': '500.00',
+          'additional_bills_bdt': '0.00',
+          'expected_recorded_amount_bdt': '500.00',
+          'period_invoice_override_bdt': null,
+          'note': 'Test preview'
+        }
+      },
       recharge: (_) async => {'invoice': 'INV-TEST'},
       loadTraffic: () async => {},
       onLogout: () async {},

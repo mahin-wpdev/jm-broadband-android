@@ -7,12 +7,15 @@ class AdminRechargePage extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> data)
       recharge;
   final Future<Map<String, dynamic>> Function(int customerId) options;
+  final Future<Map<String, dynamic>> Function(int customerId, int planId)
+      preview;
   final String? initialUsername;
   const AdminRechargePage({
     super.key,
     required this.search,
     required this.recharge,
     required this.options,
+    required this.preview,
     this.initialUsername,
   });
 
@@ -25,6 +28,8 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
   List<Map<String, dynamic>> matches = [];
   Map<String, dynamic>? selected;
   List<Map<String, dynamic>> plans = [];
+  Map<String, dynamic>? previewDetails;
+  bool previewLoading = false;
   int? chosenPlanId;
   String? requestKey;
   String? error;
@@ -60,6 +65,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
     setState(() {
       selected = null;
       plans = [];
+      previewDetails = null;
       chosenPlanId = null;
       requestKey = null;
       matches = [];
@@ -93,11 +99,39 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
     }
   }
 
+  Future<void> loadPreview(int customerId, int planId) async {
+    setState(() {
+      previewDetails = null;
+      previewLoading = true;
+      error = null;
+    });
+    try {
+      final response = await widget.preview(customerId, planId);
+      if (!mounted ||
+          selected == null ||
+          int.tryParse('${selected!['id']}') != customerId ||
+          chosenPlanId != planId) {
+        return;
+      }
+      setState(() => previewDetails =
+          Map<String, dynamic>.from(response['preview'] as Map));
+    } catch (e) {
+      if (mounted && chosenPlanId == planId) {
+        setState(() => error = 'Preview unavailable: $e');
+      }
+    } finally {
+      if (mounted && chosenPlanId == planId) {
+        setState(() => previewLoading = false);
+      }
+    }
+  }
+
   Future<void> selectCustomer(Map<String, dynamic> row) async {
     if (busy) return;
     setState(() {
       selected = null;
       plans = [];
+      previewDetails = null;
       chosenPlanId = null;
       requestKey = null;
       loading = true;
@@ -123,6 +157,9 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                 ? int.parse('${customer['plan_id']}')
                 : null;
       });
+      if (chosenPlanId != null) {
+        await loadPreview(int.parse('${customer['id']}'), chosenPlanId!);
+      }
     } catch (e) {
       if (mounted) setState(() => error = '$e');
     } finally {
@@ -147,6 +184,15 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
               Text('Selected plan: ${package['name_plan']}'),
               Text('Router: ${user['routers']}'),
               Text('Selected package price: ৳${package['price']}'),
+              Text(
+                  'Additional bills: ৳${previewDetails!['additional_bills_bdt']}'),
+              if (previewDetails!['period_invoice_override_bdt'] != null)
+                Text(
+                    'Period invoice base: ৳${previewDetails!['period_invoice_override_bdt']}'),
+              Text(
+                  'Expected recorded amount: ৳${previewDetails!['expected_recorded_amount_bdt']}',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('${previewDetails!['note']}'),
               const SizedBox(height: 12),
               const Text('This renews service, records an invoice and '
                   'can mark additional bills paid in phpNuxBill. '
@@ -198,7 +244,13 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
     final package = plans
         .where((p) => int.tryParse('${p['id']}') == chosenPlanId)
         .firstOrNull;
-    if (customer == null || package == null || busy) return;
+    if (customer == null ||
+        package == null ||
+        previewDetails == null ||
+        previewLoading ||
+        busy) {
+      return;
+    }
     final password = await confirmRecharge(customer, package);
     if (password == null || !mounted) return;
     requestKey ??= newRequestKey();
@@ -213,6 +265,8 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
         'username': customer['username'],
         'plan_id': chosenPlanId,
         'expected_plan_id': customer['plan_id'],
+        'expected_preview_amount':
+            previewDetails!['expected_recorded_amount_bdt'],
         'request_key': requestKey,
         'admin_password': password,
         'payment_verified': true,
@@ -224,6 +278,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
         matches = [];
         selected = null;
         plans = [];
+        previewDetails = null;
         chosenPlanId = null;
         requestKey = null;
       });
@@ -287,16 +342,38 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                   ],
                   onChanged: busy
                       ? null
-                      : (value) => setState(() {
+                      : (value) {
+                          setState(() {
                             chosenPlanId = value;
+                            previewDetails = null;
                             requestKey = null;
-                          }),
+                          });
+                          if (value != null) {
+                            loadPreview(int.parse('${selected!['id']}'), value);
+                          }
+                        },
                 ),
-                const Text(
-                    'Changing package and renewal happen in one recharge. '
-                    'Verify total invoice, tax and other bills in the Panel.'),
+                if (previewLoading) const LinearProgressIndicator(),
+                if (previewDetails != null)
+                  Column(children: [
+                    Text('Package: ৳${previewDetails!['package_price_bdt']}'),
+                    Text(
+                        'Additional bills: ৳${previewDetails!['additional_bills_bdt']}'),
+                    if (previewDetails!['period_invoice_override_bdt'] != null)
+                      Text(
+                          'Period invoice base: ৳${previewDetails!['period_invoice_override_bdt']}'),
+                    Text(
+                        'Expected recorded amount: ৳${previewDetails!['expected_recorded_amount_bdt']}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text('${previewDetails!['note']}'),
+                  ]),
                 FilledButton.icon(
-                  onPressed: busy || chosenPlanId == null ? null : submit,
+                  onPressed: busy ||
+                          chosenPlanId == null ||
+                          previewLoading ||
+                          previewDetails == null
+                      ? null
+                      : submit,
                   icon: const Icon(Icons.payment),
                   label: Text(busy ? 'Processing…' : 'Review & recharge'),
                 ),

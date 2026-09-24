@@ -476,6 +476,21 @@ class RoleDashboard extends StatelessWidget {
             query: {'customer_id': '$customerId'});
         return Map<String, dynamic>.from(response['data'] as Map);
       },
+      loadAdminProfile: (customerId) async {
+        final response = await api.request('admin-customer-profile',
+            query: {'customer_id': '$customerId'});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      loadExpiry: (window) async {
+        final response =
+            await api.request('admin-expiry', query: {'window': window});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      rechargePreview: (customerId, planId) async {
+        final response = await api.request('admin-recharge-preview',
+            query: {'customer_id': '$customerId', 'plan_id': '$planId'});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
       recharge: (request) async {
         final response = await api.request('admin-recharge', body: request);
         return Map<String, dynamic>.from(response['data'] as Map);
