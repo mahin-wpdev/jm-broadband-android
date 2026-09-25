@@ -167,76 +167,68 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
     }
   }
 
-  Future<String?> confirmRecharge(
+  Future<bool> confirmRecharge(
       Map<String, dynamic> user, Map<String, dynamic> package) async {
-    String password = '';
     String confirmation = '';
     bool verified = false;
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          title: const Text('Confirm manual recharge'),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text('Customer: ${user['username']}'),
-              Text('Current plan: ${user['name_plan']}'),
-              Text('Selected plan: ${package['name_plan']}'),
-              Text('Router: ${user['routers']}'),
-              Text('Selected package price: ৳${package['price']}'),
-              Text(
-                  'Additional bills: ৳${previewDetails!['additional_bills_bdt']}'),
-              if (previewDetails!['period_invoice_override_bdt'] != null)
-                Text(
-                    'Period invoice base: ৳${previewDetails!['period_invoice_override_bdt']}'),
-              Text(
-                  'Expected recorded amount: ৳${previewDetails!['expected_recorded_amount_bdt']}',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('${previewDetails!['note']}'),
-              const SizedBox(height: 12),
-              const Text('This renews service, records an invoice and '
-                  'can mark additional bills paid in phpNuxBill. '
-                  'It does NOT collect or verify a bKash/Nagad payment. '
-                  'Check the amount and payment independently.'),
-              TextField(
-                onChanged: (value) => update(() => confirmation = value.trim()),
-                decoration: const InputDecoration(
-                  labelText: 'Type the customer username to confirm',
+    return (await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, update) => AlertDialog(
+              title: const Text('Confirm manual recharge'),
+              content: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Customer: ${user['username']}'),
+                  Text('Current plan: ${user['name_plan']}'),
+                  Text('Selected plan: ${package['name_plan']}'),
+                  Text('Router: ${user['routers']}'),
+                  Text('Selected package price: ৳${package['price']}'),
+                  Text(
+                      'Additional bills: ৳${previewDetails!['additional_bills_bdt']}'),
+                  if (previewDetails!['period_invoice_override_bdt'] != null)
+                    Text(
+                        'Period invoice base: ৳${previewDetails!['period_invoice_override_bdt']}'),
+                  Text(
+                      'Expected recorded amount: ৳${previewDetails!['expected_recorded_amount_bdt']}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${previewDetails!['note']}'),
+                  const SizedBox(height: 12),
+                  const Text('This renews service, records an invoice and '
+                      'can mark additional bills paid in phpNuxBill. '
+                      'It does NOT collect or verify a bKash/Nagad payment. '
+                      'Check the amount and payment independently.'),
+                  TextField(
+                    onChanged: (value) =>
+                        update(() => confirmation = value.trim()),
+                    decoration: const InputDecoration(
+                      labelText: 'Type the customer username to confirm',
+                    ),
+                  ),
+                  CheckboxListTile(
+                    value: verified,
+                    onChanged: (value) =>
+                        update(() => verified = value == true),
+                    title:
+                        const Text('I have verified payment outside the app'),
+                  ),
+                ]),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
-              ),
-              CheckboxListTile(
-                value: verified,
-                onChanged: (value) => update(() => verified = value == true),
-                title: const Text('I have verified payment outside the app'),
-              ),
-              TextField(
-                onChanged: (value) => update(() => password = value),
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm admin password',
+                FilledButton(
+                  onPressed: !verified || confirmation != user['username']
+                      ? null
+                      : () => Navigator.pop(dialogContext, true),
+                  child: const Text('Recharge now'),
                 ),
-              ),
-            ]),
+              ],
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: !verified || confirmation != user['username']
-                  ? null
-                  : () {
-                      if (password.isNotEmpty) {
-                        Navigator.pop(dialogContext, password);
-                      }
-                    },
-              child: const Text('Recharge now'),
-            ),
-          ],
-        ),
-      ),
-    );
+        )) ??
+        false;
   }
 
   Future<void> submit() async {
@@ -251,8 +243,8 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
         busy) {
       return;
     }
-    final password = await confirmRecharge(customer, package);
-    if (password == null || !mounted) return;
+    final confirmed = await confirmRecharge(customer, package);
+    if (!confirmed || !mounted) return;
     requestKey ??= newRequestKey();
     setState(() {
       busy = true;
@@ -268,7 +260,6 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
         'expected_preview_amount':
             previewDetails!['expected_recorded_amount_bdt'],
         'request_key': requestKey,
-        'admin_password': password,
         'payment_verified': true,
       });
       if (!mounted) return;

@@ -292,10 +292,7 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   late final MobileApi api = widget.initialApi ?? MobileApi();
   bool loading = true;
   bool checkingUpdate = false;
-  bool prefetchingUpdate = false;
-  AppRelease? pendingUpdateRelease;
   AppRelease? updateRelease;
-  File? preparedUpdateApk;
   static final Uri _defaultUpdateEndpoint =
       normalizeServer('https://27.147.201.165/panel');
   @override
@@ -321,48 +318,13 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   }
 
   Future<bool> _checkForUpdate({Uri? endpoint, bool manual = false}) async {
-    if (checkingUpdate || prefetchingUpdate) {
-      return updateRelease != null || pendingUpdateRelease != null;
-    }
+    if (checkingUpdate) return updateRelease != null;
     checkingUpdate = true;
     try {
       final release = await AppUpdater.check(
           endpoint ?? api.endpoint ?? _defaultUpdateEndpoint);
-      if (release == null) {
-        if (mounted) {
-          setState(() {
-            pendingUpdateRelease = null;
-            updateRelease = null;
-            preparedUpdateApk = null;
-          });
-        }
-        return false;
-      }
-      if (!Platform.isAndroid) {
-        if (mounted) setState(() => updateRelease = release);
-        return true;
-      }
-      prefetchingUpdate = true;
-      pendingUpdateRelease = release;
-      unawaited(AppUpdater.prefetch(release).then<void>((file) {
-        prefetchingUpdate = false;
-        if (!mounted || pendingUpdateRelease?.build != release.build) return;
-        setState(() {
-          preparedUpdateApk = file;
-          updateRelease = release;
-          pendingUpdateRelease = null;
-        });
-      }, onError: (Object error, StackTrace stack) {
-        prefetchingUpdate = false;
-        if (!mounted || pendingUpdateRelease?.build != release.build) return;
-        // Fall back to the update page so the user can retry interactively.
-        setState(() {
-          updateRelease = release;
-          pendingUpdateRelease = null;
-          preparedUpdateApk = null;
-        });
-      }));
-      return true;
+      if (mounted) setState(() => updateRelease = release);
+      return release != null;
     } catch (_) {
       if (manual) rethrow;
       return false;
@@ -399,7 +361,6 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
             : updateRelease != null
                 ? AppUpdatePage(
                     release: updateRelease!,
-                    preparedApk: preparedUpdateApk,
                     onLater: updateRelease!.required
                         ? null
                         : () => setState(() => updateRelease = null))

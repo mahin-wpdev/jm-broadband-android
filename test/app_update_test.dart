@@ -106,7 +106,7 @@ void main() {
     )));
     expect(find.text('Update required'), findsOneWidget);
     expect(find.text('Later'), findsNothing);
-    expect(find.text('Download & Install'), findsOneWidget);
+    expect(find.text('Downloading in background…'), findsOneWidget);
   });
   testWidgets('optional update has Later button', (tester) async {
     await tester.pumpWidget(MaterialApp(

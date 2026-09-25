@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -101,6 +103,9 @@ class _PanelUpdateUnavailable implements Exception {
 }
 
 class AppUpdater {
+  static const _channel = MethodChannel('jm_broadband/update');
+  static const _storage =
+      FlutterSecureStorage(aOptions: AndroidOptions(resetOnError: true));
   static Uri manifest(Uri apiEndpoint) {
     final path = apiEndpoint.path
         .replaceFirst(RegExp(r'/mobile-api\.php$'), '/mobile-app-version.php');
@@ -214,6 +219,54 @@ class AppUpdater {
     return pending;
   }
 
+  static String _downloadKey(AppRelease release) =>
+      'background-update:${release.build}';
+
+  static Future<int> ensureBackgroundDownload(AppRelease release) async {
+    if (!Platform.isAndroid) throw StateError('Android is required.');
+    final saved = await _storage.read(key: _downloadKey(release));
+    final previous = int.tryParse(saved ?? '');
+    if (previous != null) {
+      final status = await backgroundStatus(previous);
+      if ((status['status'] as int? ?? -1) != -1) return previous;
+    }
+    final id = await _channel.invokeMethod<int>('enqueue', {
+      'url': release.download.toString(),
+      'fileName': 'jm-broadband-${release.build}.apk',
+    });
+    if (id == null || id < 1) {
+      throw StateError('Android could not start the update download.');
+    }
+    await _storage.write(key: _downloadKey(release), value: '$id');
+    return id;
+  }
+
+  static Future<Map<String, dynamic>> backgroundStatus(int id) async {
+    final raw =
+        await _channel.invokeMapMethod<String, dynamic>('status', {'id': id});
+    return raw == null
+        ? <String, dynamic>{'status': -1}
+        : Map<String, dynamic>.from(raw);
+  }
+
+  static Future<File> verifyBackgroundDownload(
+      AppRelease release, Map<String, dynamic> status) async {
+    if ((status['status'] as int? ?? -1) != 8) {
+      throw StateError('Update download is not complete.');
+    }
+    final local = Uri.tryParse((status['localUri'] ?? '').toString());
+    if (local == null || local.scheme != 'file') {
+      throw StateError('Downloaded APK path is unavailable.');
+    }
+    final file = File.fromUri(local);
+    if (!await file.exists() || await file.length() != release.bytes) {
+      throw StateError('APK size mismatch.');
+    }
+    final actual = (await sha256.bind(file.openRead()).first).toString();
+    if (actual != release.sha256) throw StateError('APK SHA-256 mismatch.');
+    return file;
+  }
+
   static Future<File> download(
       AppRelease release, void Function(double fraction) onProgress) async {
     if (!Platform.isAndroid) throw StateError('Android is required.');
@@ -282,32 +335,76 @@ class AppUpdatePage extends StatefulWidget {
 }
 
 class _AppUpdatePageState extends State<AppUpdatePage> {
+  bool busy = false;
+  double progress = 0;
+  int? downloadId;
+  File? verifiedApk;
+  Timer? poller;
+  String? error;
+
   @override
   void initState() {
     super.initState();
-    AppUpdater.backgroundProgress.addListener(onProgress);
-    if (Platform.isAndroid && widget.preparedApk == null) {
-      unawaited(AppUpdater.prefetch(widget.release).then<void>((_) {},
-          onError: (Object e, StackTrace st) {
-        if (mounted) setState(() => error = 'Download failed: $e');
-      }));
+    if (widget.preparedApk != null) {
+      progress = 1;
+      verifiedApk = widget.preparedApk;
+    } else if (Platform.isAndroid) {
+      unawaited(_startBackground());
     }
   }
 
-  void onProgress() {
-    if (mounted) setState(() {});
+  Future<void> _startBackground() async {
+    try {
+      final id = await AppUpdater.ensureBackgroundDownload(widget.release);
+      if (!mounted) return;
+      downloadId = id;
+      await _poll();
+      poller?.cancel();
+      poller = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
+    } catch (e) {
+      if (mounted) setState(() => error = 'Background download failed: $e');
+    }
+  }
+
+  Future<void> _poll() async {
+    final id = downloadId;
+    if (id == null || verifiedApk != null) return;
+    try {
+      final status = await AppUpdater.backgroundStatus(id);
+      if (!mounted) return;
+      final downloaded = (status['downloaded'] as num?)?.toDouble() ?? 0;
+      final total = (status['total'] as num?)?.toDouble() ??
+          widget.release.bytes.toDouble();
+      final state = status['status'] as int? ?? -1;
+      if (state == 8) {
+        final file =
+            await AppUpdater.verifyBackgroundDownload(widget.release, status);
+        if (!mounted) return;
+        poller?.cancel();
+        setState(() {
+          verifiedApk = file;
+          progress = 1;
+          error = null;
+        });
+      } else if (state == 16) {
+        poller?.cancel();
+        setState(() =>
+            error = 'Android download failed (reason ${status['reason']}).');
+      } else {
+        setState(
+            () => progress = total > 0 ? (downloaded / total).clamp(0, 1) : 0);
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = 'Update status error: $e');
+    }
   }
 
   @override
   void dispose() {
-    AppUpdater.backgroundProgress.removeListener(onProgress);
+    poller?.cancel();
     super.dispose();
   }
 
-  bool busy = false;
-  double get progress =>
-      widget.preparedApk != null ? 1 : AppUpdater.backgroundProgress.value;
-  String? error;
   Future<void> install() async {
     if (busy) return;
     setState(() {
@@ -315,8 +412,10 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
       error = null;
     });
     try {
-      final apk =
-          widget.preparedApk ?? await AppUpdater.prefetch(widget.release);
+      final apk = verifiedApk;
+      if (apk == null) {
+        throw StateError('Update is still downloading in the background.');
+      }
       final result = await OpenFilex.open(apk.path,
           type: 'application/vnd.android.package-archive');
       if (result.type != ResultType.done) throw StateError(result.message);
@@ -342,9 +441,9 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Icon(
-                    widget.preparedApk != null
+                    verifiedApk != null
                         ? Icons.download_done_rounded
-                        : Icons.system_update_alt_rounded,
+                        : Icons.downloading_rounded,
                     size: 64),
                 const SizedBox(height: 20),
                 Text('Version ${widget.release.version}',
@@ -359,7 +458,7 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
                   const SizedBox(height: 12),
                   Text(widget.release.notes, textAlign: TextAlign.center),
                 ],
-                if (busy || (progress > 0 && progress < 1)) ...[
+                if (verifiedApk == null && error == null) ...[
                   const SizedBox(height: 16),
                   LinearProgressIndicator(value: progress),
                   Text('${(progress * 100).round()}% downloaded'),
@@ -370,13 +469,13 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
                 ],
                 const SizedBox(height: 24),
                 FilledButton.icon(
-                    onPressed: busy ? null : install,
-                    icon: const Icon(Icons.download),
+                    onPressed: busy || verifiedApk == null ? null : install,
+                    icon: const Icon(Icons.install_mobile_rounded),
                     label: Text(busy
                         ? 'Opening installer…'
-                        : progress >= 1
+                        : verifiedApk != null
                             ? 'Install downloaded update'
-                            : 'Download & Install')),
+                            : 'Downloading in background…')),
                 if (!widget.release.required)
                   TextButton(
                       onPressed:
