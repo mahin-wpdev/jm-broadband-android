@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "783134170765",
+    "project_id": "jm-broadband-mahin",
+    "storage_bucket": "jm-broadband-mahin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:783134170765:android:17ce8fdac5737abbf58cc4",
+        "android_client_info": {
+          "package_name": "com.jmbroadband.jm_broadband_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDe-v6Sc-RKYBEZKl43ZAY1WXhHPu8pmLE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

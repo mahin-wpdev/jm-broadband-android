@@ -6,12 +6,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'app_update.dart';
 import 'panel_workspace.dart';
+import 'push_notifications.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await PushNotifications.instance.initialize();
+  } catch (_) {
+    // Login remains usable if Play Services/Firebase is temporarily unavailable.
+  }
   runApp(const JmApp());
 }
 
@@ -290,6 +297,8 @@ class JmApp extends StatefulWidget {
 
 class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   late final MobileApi api = widget.initialApi ?? MobileApi();
+  final messengerKey = GlobalKey<ScaffoldMessengerState>();
+  StreamSubscription<RemoteMessage>? pushMessageSub;
   bool loading = true;
   bool checkingUpdate = false;
   AppRelease? updateRelease;
@@ -299,12 +308,22 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    pushMessageSub =
+        PushNotifications.instance.foregroundMessages.listen((message) {
+      final title = message.notification?.title ?? 'JM Broadband';
+      final body = message.notification?.body ?? 'New notification';
+      messengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text('$title\n$body')),
+      );
+    });
     _boot();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    pushMessageSub?.cancel();
+    PushNotifications.instance.unbindTokenSink();
     super.dispose();
   }
 
@@ -333,6 +352,26 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _registerPushToken(String token) async {
+    if (api.user == null || api.accessToken == null || token.isEmpty) return;
+    try {
+      final meta = await PushNotifications.instance.deviceMetadata();
+      await api.request('push-register', body: {'token': token, ...meta});
+    } catch (_) {
+      // Push registration must never block login or normal ISP operations.
+    }
+  }
+
+  Future<void> _syncPush() async {
+    if (api.user == null || api.accessToken == null) return;
+    try {
+      await PushNotifications.instance.initialize();
+      await PushNotifications.instance.bindTokenSink(_registerPushToken);
+    } catch (_) {
+      // Play Services or Firebase can be unavailable temporarily.
+    }
+  }
+
   Future<void> _boot() async {
     try {
       await api.restore().timeout(const Duration(seconds: 25));
@@ -347,6 +386,7 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
     // A broken mobile-data route to the update endpoint must never hold
     // the splash screen hostage while the user needs the sign-in UI.
     setState(() => loading = false);
+    if (api.user != null) unawaited(_syncPush());
     unawaited(
         _checkForUpdate(endpoint: api.endpoint ?? _defaultUpdateEndpoint));
   }
@@ -354,6 +394,7 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: 'JM Broadband',
+        scaffoldMessengerKey: messengerKey,
         debugShowCheckedModeBanner: false,
         theme: jmPremiumTheme(),
         home: loading
@@ -368,6 +409,7 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
                     ? LoginScreen(
                         api: api,
                         onLogin: () async {
+                          await _syncPush();
                           await _checkForUpdate(endpoint: api.endpoint);
                           if (mounted) setState(() {});
                         })
@@ -578,6 +620,15 @@ class RoleDashboard extends StatelessWidget {
           '${user['id'] ?? user['username']}',
       onCheckForUpdates: onCheckForUpdates,
       onLogout: () async {
+        try {
+          final token = await PushNotifications.instance.currentToken();
+          if (token != null && api.accessToken != null) {
+            await api.request('push-unregister', body: {'token': token});
+          }
+        } catch (_) {
+          // Server logout still proceeds when push cleanup is unavailable.
+        }
+        await PushNotifications.instance.unbindTokenSink();
         await api.logout();
         onLogout();
       },
