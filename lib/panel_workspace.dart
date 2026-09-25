@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'live_traffic.dart';
 import 'admin_recharge_page.dart';
 import 'admin_customer_pages.dart';
+import 'admin_onu_page.dart';
 import 'support_tickets_page.dart';
 import 'server_traffic_peak.dart';
 
@@ -15,6 +16,14 @@ class PanelWorkspace extends StatefulWidget {
   final String trafficHistoryKey;
   final Future<Map<String, dynamic>> Function(String query) searchRecharge;
   final Future<Map<String, dynamic>> Function(String query) searchCustomers;
+  final Future<Map<String, dynamic>> Function(String query, String filter)
+      loadAdminOnus;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)
+      assignOnu;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)
+      unassignOnu;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)
+      removeOnu;
   final Future<Map<String, dynamic>> Function() loadTickets;
   final Future<Map<String, dynamic>> Function(int ticketId) ticketDetail;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> data)
@@ -43,6 +52,10 @@ class PanelWorkspace extends StatefulWidget {
     required this.trafficHistoryKey,
     required this.searchRecharge,
     required this.searchCustomers,
+    required this.loadAdminOnus,
+    required this.assignOnu,
+    required this.unassignOnu,
+    required this.removeOnu,
     required this.loadTickets,
     required this.ticketDetail,
     required this.createTicket,
@@ -101,6 +114,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('Recharge', 'recharge', Icons.add_card_outlined),
             _Page('Support', 'support', Icons.support_agent_rounded),
             _Page('Alerts', 'alerts', Icons.notifications_rounded),
+            _Page('ONU Manager', 'onu-admin', Icons.hub_rounded),
             _Page('More', 'more', Icons.apps_outlined),
           ],
       };
@@ -178,7 +192,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
               section == 'recharge' ||
               section == 'expiry' ||
               section == 'support' ||
-              section == 'alerts')
+              section == 'alerts' ||
+              section == 'onu-admin')
           ? Future.value(<String, dynamic>{'available': true})
           : section == 'customers'
               ? widget.searchCustomers(customerSearch.text.trim())
@@ -224,7 +239,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
     final page = pages[selected];
     return Scaffold(
       appBar: AppBar(
-        title: Text('JM Broadband · ${page.title}'),
+        title: Text('Arivo ISP Billing · ${page.title}'),
         actions: [
           if (widget.role == 'customer' ||
               widget.role == 'admin' ||
@@ -271,7 +286,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                     page.section == 'recharge' ||
                     page.section == 'expiry' ||
                     page.section == 'support' ||
-                    page.section == 'alerts')
+                    page.section == 'alerts' ||
+                    page.section == 'onu-admin')
                 ? null
                 : refresh,
             icon: const Icon(Icons.refresh),
@@ -321,6 +337,12 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                         load: widget.ticketDetail,
                         update: widget.updateTicket))),
           ),
+        'onu-admin' => AdminOnuPage(
+            load: widget.loadAdminOnus,
+            searchCustomers: widget.searchCustomers,
+            assign: widget.assignOnu,
+            unassign: widget.unassignOnu,
+            remove: widget.removeOnu),
         'expiry' => AdminExpiryPage(
             load: widget.loadExpiry, onCustomer: (id) => openCustomer(id)),
         _ => FutureBuilder<Map<String, dynamic>>(
@@ -377,6 +399,14 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                   child: _SectionView(
                     section: page.section,
                     data: data,
+                    unreadAlerts: unreadAlerts,
+                    onOpenSection: widget.role == 'customer'
+                        ? (section) {
+                            final index =
+                                pages.indexWhere((p) => p.section == section);
+                            if (index >= 0) change(index);
+                          }
+                        : null,
                     onRecharge: (widget.role == 'admin' ||
                                 widget.role == 'superadmin') &&
                             page.section == 'customers'
@@ -431,11 +461,15 @@ class _SectionView extends StatelessWidget {
   final Map<String, dynamic> data;
   final void Function(String username)? onRecharge;
   final void Function(int customerId)? onProfile;
+  final ValueChanged<String>? onOpenSection;
+  final int unreadAlerts;
   const _SectionView(
       {required this.section,
       required this.data,
       this.onRecharge,
-      this.onProfile});
+      this.onProfile,
+      this.onOpenSection,
+      this.unreadAlerts = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -450,7 +484,12 @@ class _SectionView extends StatelessWidget {
       ));
     }
     if (section == 'home') {
-      elements.addAll(_homeCards(context, data));
+      elements.addAll(_homeCards(
+        context,
+        data,
+        onOpenSection: onOpenSection,
+        unreadAlerts: unreadAlerts,
+      ));
     } else {
       final raw = data['items'];
       final rows = raw is List ? raw : const [];
@@ -511,7 +550,12 @@ class _SectionView extends StatelessWidget {
     }
   }
 
-  List<Widget> _homeCards(BuildContext context, Map<String, dynamic> data) {
+  List<Widget> _homeCards(
+    BuildContext context,
+    Map<String, dynamic> data, {
+    ValueChanged<String>? onOpenSection,
+    int unreadAlerts = 0,
+  }) {
     if (data['role'] == 'customer') {
       final profile = _asMap(data['profile']);
       final package = _asMap(data['package']);
@@ -520,16 +564,25 @@ class _SectionView extends StatelessWidget {
       network.remove('usage_upload_bytes');
       final monthly = _asMap(data['monthly_usage']);
       return [
-        Text('Hello, ${profile['name'] ?? profile['username'] ?? ''}',
-            style: Theme.of(context).textTheme.headlineSmall),
-        _InfoCard(title: 'Your profile', values: profile),
-        _InfoCard(title: 'Your internet package', values: package),
+        _CustomerStatusHero(profile: profile, package: package),
+        const SizedBox(height: 12),
+        _CustomerMetricGrid(
+          package: package,
+          monthly: monthly,
+          network: network,
+        ),
+        if (onOpenSection != null) ...[
+          const SizedBox(height: 14),
+          _CustomerQuickActions(
+            unreadAlerts: unreadAlerts,
+            onOpen: onOpenSection,
+          ),
+        ],
+        const SizedBox(height: 14),
         _monthlyCard(monthly),
         _serverPeakCard(ServerTrafficPeak.fromJson(data['traffic_peak'])),
         if (network.values.any((value) => value != null))
-          _InfoCard(title: 'Network summary', values: network),
-        const Text(
-            'See the Live tab for current PPPoE speed and online status.'),
+          _InfoCard(title: 'Network details', values: network),
       ];
     }
     return [
@@ -588,6 +641,271 @@ Widget _serverPeakCard(ServerTrafficPeak peak) {
     'Measurement': 'RADIUS accounting interval average',
     'History': 'Persisted independently of this phone',
   });
+}
+
+class _CustomerStatusHero extends StatelessWidget {
+  final Map<String, dynamic> profile;
+  final Map<String, dynamic> package;
+  const _CustomerStatusHero({required this.profile, required this.package});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = '${package['state'] ?? 'none'}';
+    final active = state == 'active';
+    final name = '${profile['name'] ?? profile['username'] ?? 'Customer'}';
+    final plan = '${package['name'] ?? 'No package'}';
+    final expiry = package['expiration'] == null
+        ? 'Expiry unavailable'
+        : 'Valid until ${package['expiration']}';
+    final tone =
+        active ? const Color(0xFF008F73) : Theme.of(context).colorScheme.error;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: tone.withValues(alpha: .18)),
+      ),
+      child: Row(children: [
+        CircleAvatar(
+          radius: 28,
+          backgroundColor: tone.withValues(alpha: .14),
+          child: Icon(
+            active ? Icons.wifi_rounded : Icons.signal_wifi_off_rounded,
+            color: tone,
+            size: 30,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+            child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                active
+                    ? 'Internet service active'
+                    : 'Internet service inactive',
+                style: TextStyle(
+                  color: tone,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                )),
+            const SizedBox(height: 3),
+            Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium),
+            Text('$plan · $expiry',
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        )),
+        Icon(
+          active ? Icons.verified_rounded : Icons.error_outline_rounded,
+          color: tone,
+        ),
+      ]),
+    );
+  }
+}
+
+class _CustomerMetricGrid extends StatelessWidget {
+  final Map<String, dynamic> package;
+  final Map<String, dynamic> monthly;
+  final Map<String, dynamic> network;
+  const _CustomerMetricGrid({
+    required this.package,
+    required this.monthly,
+    required this.network,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final days = package['days_remaining'];
+    final total = monthly['available'] == true
+        ? _usageGb(monthly['total_bytes'])
+        : 'Unavailable';
+    final price = package['price_bdt'];
+    final onuRx = network['onu_rx_dbm'];
+    final onuStatus = network['onu_status'];
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.55,
+      children: [
+        _CustomerMetric(
+          icon: Icons.inventory_2_rounded,
+          label: 'Package',
+          value: '${package['name'] ?? 'Unavailable'}',
+          detail: price == null ? null : '৳$price',
+        ),
+        _CustomerMetric(
+          icon: Icons.speed_rounded,
+          label: 'Speed',
+          value: '${package['speed'] ?? 'Unavailable'}',
+        ),
+        _CustomerMetric(
+          icon: Icons.event_available_rounded,
+          label: 'Days left',
+          value: days == null ? 'Unavailable' : '$days days',
+          detail: package['expiration']?.toString(),
+        ),
+        _CustomerMetric(
+          icon: Icons.data_usage_rounded,
+          label: 'This month',
+          value: total,
+        ),
+        _CustomerMetric(
+          icon: Icons.router_rounded,
+          label: 'ONU signal',
+          value: onuRx == null ? 'Unavailable' : '$onuRx dBm',
+          detail: onuStatus?.toString(),
+        ),
+        _CustomerMetric(
+          icon: Icons.account_balance_wallet_rounded,
+          label: 'Account balance',
+          value: package['balance_bdt'] == null
+              ? 'See account'
+              : '৳${package['balance_bdt']}',
+        ),
+      ],
+    );
+  }
+}
+
+class _CustomerMetric extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final String? detail;
+  const _CustomerMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.detail,
+  });
+
+  @override
+  Widget build(BuildContext context) => Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            CircleAvatar(
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .primaryContainer
+                  .withValues(alpha: .65),
+              child: Icon(icon, size: 21),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelMedium),
+                const SizedBox(height: 2),
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+                if (detail != null && detail!.isNotEmpty)
+                  Text(detail!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall),
+              ],
+            )),
+          ]),
+        ),
+      );
+}
+
+class _CustomerQuickActions extends StatelessWidget {
+  final int unreadAlerts;
+  final ValueChanged<String> onOpen;
+  const _CustomerQuickActions({
+    required this.unreadAlerts,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Quick actions', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Row(children: [
+            _QuickAction(
+              icon: Icons.monitor_heart_rounded,
+              label: 'Live',
+              onTap: () => onOpen('live'),
+            ),
+            _QuickAction(
+              icon: Icons.receipt_long_rounded,
+              label: 'Bills',
+              onTap: () => onOpen('bills'),
+            ),
+            _QuickAction(
+              icon: Icons.support_agent_rounded,
+              label: 'Support',
+              onTap: () => onOpen('support'),
+            ),
+            _QuickAction(
+              icon: unreadAlerts > 0
+                  ? Icons.notifications_active_rounded
+                  : Icons.notifications_none_rounded,
+              label: unreadAlerts > 0 ? 'Alerts $unreadAlerts' : 'Alerts',
+              onTap: () => onOpen('alerts'),
+            ),
+          ]),
+        ],
+      );
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(icon),
+                ),
+                const SizedBox(height: 5),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelMedium),
+              ]),
+            ),
+          ),
+        ),
+      );
 }
 
 class _CustomerCompactCard extends StatelessWidget {

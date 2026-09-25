@@ -40,6 +40,10 @@ Future<void> showRole(WidgetTester tester, String role) async {
       ticketNotifications: () async => {'unread': 0, 'items': []},
       readTicketNotification: (_) async => {'ok': true},
       searchCustomers: (_) async => {'available': true, 'items': []},
+      loadAdminOnus: (_, __) async => {'available': true, 'items': []},
+      assignOnu: (_) async => {'assigned': true},
+      unassignOnu: (_) async => {'unassigned': true},
+      removeOnu: (_) async => {'removed': true},
       searchRecharge: (_) async => {'available': true, 'items': []},
       rechargeOptions: (_) async => {'customer': {}, 'items': []},
       loadAdminProfile: (_) async => {
@@ -76,7 +80,7 @@ void main() {
   testWidgets('customer Home Live Bills ONU Inbox Account navigation',
       (tester) async {
     await showRole(tester, 'customer');
-    expect(find.text('JM Broadband · Home'), findsOneWidget);
+    expect(find.text('Arivo ISP Billing · Home'), findsOneWidget);
     for (final label in [
       'Live',
       'Support',
@@ -93,7 +97,7 @@ void main() {
       await tester.tap(find.text(label).last);
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pump();
-      expect(find.text('JM Broadband · $label'), findsOneWidget);
+      expect(find.text('Arivo ISP Billing · $label'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });
@@ -107,7 +111,7 @@ void main() {
       await tester.tap(find.text(label).last);
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pump();
-      expect(find.text('JM Broadband · $label'), findsOneWidget);
+      expect(find.text('Arivo ISP Billing · $label'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });
@@ -129,7 +133,7 @@ void main() {
       await tester.tap(find.text(label).last);
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pump();
-      expect(find.text('JM Broadband · $label'), findsOneWidget);
+      expect(find.text('Arivo ISP Billing · $label'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });

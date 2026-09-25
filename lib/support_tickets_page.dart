@@ -23,6 +23,7 @@ class SupportTicketsPage extends StatefulWidget {
 }
 
 class _SupportTicketsState extends State<SupportTicketsPage> {
+  bool get isStaff => widget.role == 'admin' || widget.role == 'superadmin';
   late Future<Map<String, dynamic>> future;
   @override
   void initState() {
@@ -177,7 +178,7 @@ class _SupportTicketsState extends State<SupportTicketsPage> {
                                           overflow: TextOverflow.ellipsis),
                                       subtitle: Text(
                                           '${t['category']} · ${t['updated_at']}'
-                                          '${widget.role == 'admin' ? ' · ${t['username']}' : ''}'),
+                                          '${isStaff ? ' · ${t['username']}' : ''}'),
                                       trailing:
                                           Chip(label: Text('${t['status']}')),
                                       onTap: () =>
@@ -203,6 +204,7 @@ class SupportTicketDetailsPage extends StatefulWidget {
 }
 
 class _TicketDetailState extends State<SupportTicketDetailsPage> {
+  bool get isStaff => widget.role == 'admin' || widget.role == 'superadmin';
   late Future<Map<String, dynamic>> future;
   final reply = TextEditingController();
   bool busy = false;
@@ -262,7 +264,7 @@ class _TicketDetailState extends State<SupportTicketDetailsPage> {
                   child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Text('${t['description']}'))),
-              if (widget.role == 'admin')
+              if (isStaff)
                 DropdownButtonFormField<String>(
                     key: ValueKey(t['status']),
                     initialValue: '${t['status']}',
@@ -283,6 +285,18 @@ class _TicketDetailState extends State<SupportTicketDetailsPage> {
                               submit({'action': 'status', 'status': v});
                             }
                           }),
+              if (isStaff && t['status'] != 'closed') ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                        onPressed: busy
+                            ? null
+                            : () => submit(
+                                {'action': 'status', 'status': 'closed'}),
+                        icon: const Icon(Icons.lock_outline_rounded),
+                        label: const Text('Close ticket'))),
+              ],
               const SizedBox(height: 12),
               Text('Conversation',
                   style: Theme.of(context).textTheme.titleLarge),

@@ -46,6 +46,10 @@ Future<void> showRechargeRole(WidgetTester tester, String role) async {
           }
         ]
       },
+      loadAdminOnus: (_, __) async => {'available': true, 'items': []},
+      assignOnu: (_) async => {'assigned': true},
+      unassignOnu: (_) async => {'unassigned': true},
+      removeOnu: (_) async => {'removed': true},
       searchRecharge: (_) async => {
         'available': true,
         'items': [

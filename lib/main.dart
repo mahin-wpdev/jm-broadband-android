@@ -310,7 +310,7 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     pushMessageSub =
         PushNotifications.instance.foregroundMessages.listen((message) {
-      final title = message.notification?.title ?? 'JM Broadband';
+      final title = message.notification?.title ?? 'Arivo ISP Billing';
       final body = message.notification?.body ?? 'New notification';
       messengerKey.currentState?.showSnackBar(
         SnackBar(content: Text('$title\n$body')),
@@ -393,7 +393,7 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'JM Broadband',
+        title: 'Arivo ISP Billing',
         scaffoldMessengerKey: messengerKey,
         debugShowCheckedModeBanner: false,
         theme: jmPremiumTheme(),
@@ -482,7 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Image.asset('assets/branding/logo.png',
                               height: 100, fit: BoxFit.contain),
                           const SizedBox(height: 15),
-                          const Text('JM Broadband',
+                          const Text('Arivo ISP Billing',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 30, fontWeight: FontWeight.bold)),
@@ -555,6 +555,23 @@ class RoleDashboard extends StatelessWidget {
       searchCustomers: (query) async {
         final response = await api.request('mobile-data',
             query: {'section': 'customers', 'q': query});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      loadAdminOnus: (query, filter) async {
+        final response = await api
+            .request('admin-onu-list', query: {'q': query, 'filter': filter});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      assignOnu: (input) async {
+        final response = await api.request('admin-onu-assign', body: input);
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      unassignOnu: (input) async {
+        final response = await api.request('admin-onu-unassign', body: input);
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      removeOnu: (input) async {
+        final response = await api.request('admin-onu-remove', body: input);
         return Map<String, dynamic>.from(response['data'] as Map);
       },
       loadTickets: () async {

@@ -4,7 +4,7 @@ import 'package:jm_broadband_app/panel_workspace.dart';
 
 Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
     {Map<String, dynamic>? trafficPeak}) async {
-  tester.view.physicalSize = const Size(1440, 3088);
+  tester.view.physicalSize = const Size(1440, 6000);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -16,8 +16,21 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
       load: (_) async => {
         'role': 'customer',
         'profile': {'name': 'Test customer'},
-        'package': {'name': 'Test package'},
-        'network': {'usage_download_bytes': null, 'usage_upload_bytes': null},
+        'package': {
+          'name': 'Test package',
+          'state': 'active',
+          'speed': '30 Mbps',
+          'price_bdt': 500,
+          'balance_bdt': 0,
+          'expiration': '2026-10-15',
+          'days_remaining': 20,
+        },
+        'network': {
+          'usage_download_bytes': null,
+          'usage_upload_bytes': null,
+          'onu_rx_dbm': -21.3,
+          'onu_status': 'ONLINE',
+        },
         'monthly_usage': usage,
         'traffic_peak': trafficPeak,
       },
@@ -31,6 +44,10 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
       ticketNotifications: () async => {'unread': 0, 'items': []},
       readTicketNotification: (_) async => {'ok': true},
       searchCustomers: (_) async => {'available': true, 'items': []},
+      loadAdminOnus: (_, __) async => {'available': true, 'items': []},
+      assignOnu: (_) async => {'assigned': true},
+      unassignOnu: (_) async => {'unassigned': true},
+      removeOnu: (_) async => {'removed': true},
       searchRecharge: (_) async => {'available': true, 'items': []},
       rechargeOptions: (_) async => {'customer': {}, 'items': []},
       loadAdminProfile: (_) async => {
@@ -76,7 +93,7 @@ void main() {
     expect(find.text('Monthly bandwidth usage (2026-09)'), findsOneWidget);
     expect(find.text('2.50 GB'), findsOneWidget);
     expect(find.text('0.50 GB'), findsOneWidget);
-    expect(find.text('3.00 GB'), findsOneWidget);
+    expect(find.text('3.00 GB'), findsWidgets);
   });
 
   testWidgets('does not invent monthly GB when accounting is missing',
@@ -86,7 +103,7 @@ void main() {
       'note': 'No verified monthly accounting data',
     });
     expect(find.text('Monthly bandwidth usage'), findsOneWidget);
-    expect(find.text('Unavailable'), findsOneWidget);
+    expect(find.text('Unavailable'), findsWidgets);
     expect(find.text('No verified monthly accounting data'), findsOneWidget);
     expect(find.text('0.00 GB'), findsNothing);
   });
@@ -108,5 +125,30 @@ void main() {
     expect(find.text('32.00 Mbps'), findsOneWidget);
     expect(find.text('8.00 Mbps'), findsOneWidget);
     expect(find.text('No record'), findsNothing);
+  });
+
+  testWidgets('customer dashboard is icon-first and understandable at a glance',
+      (tester) async {
+    await showHome(tester, {
+      'available': true,
+      'month': '2026-09',
+      'download_bytes': 2000000000,
+      'upload_bytes': 1000000000,
+      'total_bytes': 3000000000,
+    });
+    expect(find.text('Internet service active'), findsOneWidget);
+    expect(find.text('Package'), findsOneWidget);
+    expect(find.text('Speed'), findsOneWidget);
+    expect(find.text('Days left'), findsOneWidget);
+    expect(find.text('This month'), findsOneWidget);
+    expect(find.text('ONU signal'), findsOneWidget);
+    expect(find.text('Account balance'), findsOneWidget);
+    expect(find.text('Quick actions'), findsOneWidget);
+    for (final action in ['Live', 'Bills', 'Support', 'Alerts']) {
+      expect(find.text(action), findsWidgets);
+    }
+    expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.speed_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.support_agent_rounded), findsWidgets);
   });
 }

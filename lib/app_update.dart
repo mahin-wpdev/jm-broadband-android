@@ -451,8 +451,8 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
                 const SizedBox(height: 14),
                 Text(
                     widget.release.required
-                        ? 'Install this update to continue using JM Broadband.'
-                        : 'A newer version of JM Broadband is available.',
+                        ? 'Install this update to continue using Arivo ISP Billing.'
+                        : 'A newer version of Arivo ISP Billing is available.',
                     textAlign: TextAlign.center),
                 if (widget.release.notes.isNotEmpty) ...[
                   const SizedBox(height: 12),

@@ -59,7 +59,7 @@ class MainActivity : FlutterActivity() {
     }
     private fun enqueue(url: String, fileName: String): Long {
         val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("JM Broadband update")
+            .setTitle("Arivo ISP Billing update")
             .setDescription("Downloading app update")
             .setMimeType("application/vnd.android.package-archive")
             .setAllowedOverMetered(true)
