@@ -38,7 +38,7 @@ Future<void> showRole(WidgetTester tester, String role) async {
       createTicket: (_) async => {'id': 1},
       updateTicket: (_) async => {'id': 1},
       ticketNotifications: () async => {'unread': 0, 'items': []},
-      readTicketNotification: (_) async => {'ok': true},
+      readTicketNotification: (_, __) async => {'ok': true},
       searchCustomers: (_) async => {'available': true, 'items': []},
       loadAdminOnus: (_, __) async => {'available': true, 'items': []},
       assignOnu: (_) async => {'assigned': true},
@@ -90,7 +90,7 @@ void main() {
       'Account',
       'Home'
     ]) {
-      if (!['Home', 'Live', 'Support', 'Account'].contains(label)) {
+      if (!['Home', 'Account'].contains(label)) {
         await tester.tap(find.text('More').last);
         await tester.pumpAndSettle();
       }

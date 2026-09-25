@@ -34,7 +34,7 @@ Future<void> showRechargeRole(WidgetTester tester, String role) async {
       createTicket: (_) async => {'id': 1},
       updateTicket: (_) async => {'id': 1},
       ticketNotifications: () async => {'unread': 0, 'items': []},
-      readTicketNotification: (_) async => {'ok': true},
+      readTicketNotification: (_, __) async => {'ok': true},
       searchCustomers: (_) async => {
         'available': true,
         'items': [

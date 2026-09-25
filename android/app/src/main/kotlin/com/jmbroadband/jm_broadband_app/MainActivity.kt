@@ -20,10 +20,10 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 "support_tickets",
-                "Support tickets",
+                "Arivo notifications",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Support ticket replies and status updates"
+                description = "Support tickets, service updates and admin messages"
                 enableVibration(true)
             }
             val manager = getSystemService(NotificationManager::class.java)

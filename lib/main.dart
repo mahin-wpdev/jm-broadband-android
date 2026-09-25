@@ -595,9 +595,11 @@ class RoleDashboard extends StatelessWidget {
         final response = await api.request('ticket-notifications');
         return Map<String, dynamic>.from(response['data'] as Map);
       },
-      readTicketNotification: (id) async {
-        final response = await api
-            .request('ticket-notification-read', body: {'notification_id': id});
+      readTicketNotification: (id, type) async {
+        final response = await api.request('ticket-notification-read', body: {
+          'notification_id': id,
+          'notification_type': type,
+        });
         return Map<String, dynamic>.from(response['data'] as Map);
       },
       searchRecharge: (query) async {

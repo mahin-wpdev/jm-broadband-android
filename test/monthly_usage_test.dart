@@ -30,6 +30,9 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
           'usage_upload_bytes': null,
           'onu_rx_dbm': -21.3,
           'onu_status': 'ONLINE',
+          'pppoe_online': true,
+          'connected_since': '2026-09-25 10:00:00',
+          'connected_seconds': 5400,
         },
         'monthly_usage': usage,
         'traffic_peak': trafficPeak,
@@ -42,7 +45,7 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
       createTicket: (_) async => {'id': 1},
       updateTicket: (_) async => {'id': 1},
       ticketNotifications: () async => {'unread': 0, 'items': []},
-      readTicketNotification: (_) async => {'ok': true},
+      readTicketNotification: (_, __) async => {'ok': true},
       searchCustomers: (_) async => {'available': true, 'items': []},
       loadAdminOnus: (_, __) async => {'available': true, 'items': []},
       assignOnu: (_) async => {'assigned': true},
@@ -80,7 +83,7 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
 }
 
 void main() {
-  testWidgets('shows monthly download, upload, and total in GB',
+  testWidgets('shows monthly total once in the dashboard summary',
       (tester) async {
     await showHome(tester, {
       'available': true,
@@ -90,10 +93,11 @@ void main() {
       'total_bytes': 3000000000,
       'note': 'Recorded RADIUS counters',
     });
-    expect(find.text('Monthly bandwidth usage (2026-09)'), findsOneWidget);
-    expect(find.text('2.50 GB'), findsOneWidget);
-    expect(find.text('0.50 GB'), findsOneWidget);
-    expect(find.text('3.00 GB'), findsWidgets);
+    expect(find.text('This month'), findsOneWidget);
+    expect(find.text('3.00 GB'), findsOneWidget);
+    expect(find.text('Monthly bandwidth usage (2026-09)'), findsNothing);
+    expect(find.text('2.50 GB'), findsNothing);
+    expect(find.text('0.50 GB'), findsNothing);
   });
 
   testWidgets('does not invent monthly GB when accounting is missing',
@@ -102,13 +106,14 @@ void main() {
       'available': false,
       'note': 'No verified monthly accounting data',
     });
-    expect(find.text('Monthly bandwidth usage'), findsOneWidget);
+    expect(find.text('This month'), findsOneWidget);
     expect(find.text('Unavailable'), findsWidgets);
-    expect(find.text('No verified monthly accounting data'), findsOneWidget);
+    expect(find.text('Monthly bandwidth usage'), findsNothing);
+    expect(find.text('No verified monthly accounting data'), findsNothing);
     expect(find.text('0.00 GB'), findsNothing);
   });
 
-  testWidgets('Home shows server-recorded peak without phone history',
+  testWidgets('Home does not duplicate detailed peak-speed controls',
       (tester) async {
     await showHome(tester, {
       'available': false
@@ -121,10 +126,9 @@ void main() {
       'download_at_ms': 1790000000000,
       'upload_at_ms': 1790000001000,
     });
-    expect(find.text('Server-recorded highest speed'), findsOneWidget);
-    expect(find.text('32.00 Mbps'), findsOneWidget);
-    expect(find.text('8.00 Mbps'), findsOneWidget);
-    expect(find.text('No record'), findsNothing);
+    expect(find.text('Server-recorded highest speed'), findsNothing);
+    expect(find.text('32.00 Mbps'), findsNothing);
+    expect(find.text('8.00 Mbps'), findsNothing);
   });
 
   testWidgets('customer dashboard is icon-first and understandable at a glance',
@@ -142,6 +146,8 @@ void main() {
     expect(find.text('Days left'), findsOneWidget);
     expect(find.text('This month'), findsOneWidget);
     expect(find.text('ONU signal'), findsOneWidget);
+    expect(find.text('Connected for'), findsOneWidget);
+    expect(find.text('1h 30m'), findsOneWidget);
     expect(find.text('Account balance'), findsOneWidget);
     expect(find.text('Quick actions'), findsOneWidget);
     for (final action in ['Live', 'Bills', 'Support', 'Alerts']) {

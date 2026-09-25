@@ -330,7 +330,8 @@ class _TicketDetailState extends State<SupportTicketDetailsPage> {
 
 class TicketNotificationsPage extends StatefulWidget {
   final TicketLoad load;
-  final Future<Map<String, dynamic>> Function(int notificationId) markRead;
+  final Future<Map<String, dynamic>> Function(
+      int notificationId, String notificationType) markRead;
   final void Function(int ticketId) onTicket;
   const TicketNotificationsPage(
       {super.key,
@@ -352,9 +353,12 @@ class _TicketNotificationsState extends State<TicketNotificationsPage> {
   void reload() => setState(() => future = widget.load());
   Future<void> open(Map<String, dynamic> n) async {
     try {
-      await widget.markRead(int.parse('${n['id']}'));
+      final kind = '${n['kind'] ?? 'support_ticket'}';
+      await widget.markRead(int.parse('${n['id']}'), kind);
       if (mounted) {
-        widget.onTicket(int.parse('${n['ticket_id']}'));
+        if (kind == 'support_ticket' && n['ticket_id'] != null) {
+          widget.onTicket(int.parse('${n['ticket_id']}'));
+        }
         reload();
       }
     } catch (e) {
@@ -392,22 +396,29 @@ class _TicketNotificationsState extends State<TicketNotificationsPage> {
               } catch (_) {}
             },
             child: ListView(padding: const EdgeInsets.all(12), children: [
-              Text('${data['unread']} unread support alerts',
+              Text('${data['unread']} unread alerts',
                   style: Theme.of(context).textTheme.titleMedium),
-              if (items.isEmpty)
-                const ListTile(title: Text('No support alerts yet')),
+              if (items.isEmpty) const ListTile(title: Text('No alerts yet')),
               for (final n in items)
                 Card(
                     child: ListTile(
-                        leading: Icon(n['read_at'] == null
-                            ? Icons.notifications_active_rounded
-                            : Icons.notifications_none_rounded),
+                        leading: Icon(
+                          n['kind'] == 'panel_message'
+                              ? Icons.campaign_rounded
+                              : (n['read_at'] == null
+                                  ? Icons.notifications_active_rounded
+                                  : Icons.notifications_none_rounded),
+                        ),
                         title: Text('${n['title']}',
                             style: TextStyle(
                                 fontWeight: n['read_at'] == null
                                     ? FontWeight.bold
                                     : FontWeight.normal)),
-                        subtitle: Text('${n['created_at']}'),
+                        subtitle: Text(
+                          n['body'] == null || '${n['body']}'.isEmpty
+                              ? '${n['created_at']}'
+                              : '${n['body']}\n${n['created_at']}',
+                        ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => open(n))),
             ]));

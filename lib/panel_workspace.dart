@@ -5,7 +5,6 @@ import 'admin_recharge_page.dart';
 import 'admin_customer_pages.dart';
 import 'admin_onu_page.dart';
 import 'support_tickets_page.dart';
-import 'server_traffic_peak.dart';
 
 /// Actual read-only Panel data. The client never supplies an actor/customer ID.
 class PanelWorkspace extends StatefulWidget {
@@ -31,8 +30,8 @@ class PanelWorkspace extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> data)
       updateTicket;
   final Future<Map<String, dynamic>> Function() ticketNotifications;
-  final Future<Map<String, dynamic>> Function(int notificationId)
-      readTicketNotification;
+  final Future<Map<String, dynamic>> Function(
+      int notificationId, String notificationType) readTicketNotification;
   final Future<Map<String, dynamic>> Function(int customerId) rechargeOptions;
   final Future<Map<String, dynamic>> Function(int customerId) loadAdminProfile;
   final Future<Map<String, dynamic>> Function(String window) loadExpiry;
@@ -120,7 +119,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
       };
 
   List<String> get primarySections => switch (widget.role) {
-        'customer' => const ['home', 'traffic', 'support', 'account'],
+        'customer' => const ['home', 'account'],
         'reseller' => const ['home', 'customers', 'sales', 'account'],
         _ => const ['home', 'customers', 'recharge', 'support'],
       };
@@ -241,9 +240,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
       appBar: AppBar(
         title: Text('Arivo ISP Billing · ${page.title}'),
         actions: [
-          if (widget.role == 'customer' ||
-              widget.role == 'admin' ||
-              widget.role == 'superadmin')
+          if (widget.role == 'admin' || widget.role == 'superadmin')
             IconButton(
                 tooltip: 'Support notifications',
                 onPressed: () {
@@ -425,10 +422,10 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
       },
       bottomNavigationBar: NavigationBar(
         selectedIndex: !primarySections.contains(page.section)
-            ? 4
+            ? primarySections.length
             : primarySections.indexOf(page.section),
         onDestinationSelected: (index) {
-          if (index == 4) {
+          if (index == primarySections.length) {
             openMore();
             return;
           }
@@ -578,11 +575,7 @@ class _SectionView extends StatelessWidget {
             onOpen: onOpenSection,
           ),
         ],
-        const SizedBox(height: 14),
-        _monthlyCard(monthly),
-        _serverPeakCard(ServerTrafficPeak.fromJson(data['traffic_peak'])),
-        if (network.values.any((value) => value != null))
-          _InfoCard(title: 'Network details', values: network),
+        const SizedBox(height: 6),
       ];
     }
     return [
@@ -604,45 +597,6 @@ String _usageGb(Object? value) {
   return '${(bytes / 1000000000).toStringAsFixed(2)} GB';
 }
 
-Widget _monthlyCard(Map<String, dynamic> usage) {
-  final available = usage['available'] == true &&
-      _usageGb(usage['download_bytes']) != 'Unavailable' &&
-      _usageGb(usage['upload_bytes']) != 'Unavailable' &&
-      _usageGb(usage['total_bytes']) != 'Unavailable';
-  if (!available) {
-    return _InfoCard(title: 'Monthly bandwidth usage', values: {
-      'Status': 'Unavailable',
-      'Reason': usage['note'] ??
-          'This Panel has no verified monthly accounting data.',
-    });
-  }
-  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    _InfoCard(title: 'Monthly bandwidth usage (${usage['month']})', values: {
-      'Download': _usageGb(usage['download_bytes']),
-      'Upload': _usageGb(usage['upload_bytes']),
-      'Total': _usageGb(usage['total_bytes']),
-    }),
-    if (usage['note'] is String)
-      Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Text(usage['note'] as String)),
-  ]);
-}
-
-Widget _serverPeakCard(ServerTrafficPeak peak) {
-  if (!peak.hasRecord) {
-    return _InfoCard(title: 'Server-recorded highest speed', values: {
-      'Status': peak.message,
-    });
-  }
-  return _InfoCard(title: 'Server-recorded highest speed', values: {
-    'Download': peak.downloadText,
-    'Upload': peak.uploadText,
-    'Measurement': 'RADIUS accounting interval average',
-    'History': 'Persisted independently of this phone',
-  });
-}
-
 class _CustomerStatusHero extends StatelessWidget {
   final Map<String, dynamic> profile;
   final Map<String, dynamic> package;
@@ -653,10 +607,7 @@ class _CustomerStatusHero extends StatelessWidget {
     final state = '${package['state'] ?? 'none'}';
     final active = state == 'active';
     final name = '${profile['name'] ?? profile['username'] ?? 'Customer'}';
-    final plan = '${package['name'] ?? 'No package'}';
-    final expiry = package['expiration'] == null
-        ? 'Expiry unavailable'
-        : 'Valid until ${package['expiration']}';
+    final username = '${profile['username'] ?? ''}';
     final tone =
         active ? const Color(0xFF008F73) : Theme.of(context).colorScheme.error;
     return Container(
@@ -696,8 +647,8 @@ class _CustomerStatusHero extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium),
-            Text('$plan · $expiry',
-                maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (username.isNotEmpty)
+              Text('@$username', maxLines: 1, overflow: TextOverflow.ellipsis),
           ],
         )),
         Icon(
@@ -707,6 +658,21 @@ class _CustomerStatusHero extends StatelessWidget {
       ]),
     );
   }
+}
+
+String _connectedForLabel(dynamic seconds, dynamic online) {
+  if (online == false) return 'Offline';
+  final raw =
+      seconds is num ? seconds.toInt() : int.tryParse('${seconds ?? ''}');
+  if (raw == null) return 'Unavailable';
+  final safe = raw < 0 ? 0 : raw;
+  final days = safe ~/ 86400;
+  final hours = (safe % 86400) ~/ 3600;
+  final minutes = (safe % 3600) ~/ 60;
+  if (days > 0) return '${days}d ${hours}h';
+  if (hours > 0) return '${hours}h ${minutes}m';
+  if (minutes > 0) return '${minutes}m';
+  return '<1m';
 }
 
 class _CustomerMetricGrid extends StatelessWidget {
@@ -746,6 +712,15 @@ class _CustomerMetricGrid extends StatelessWidget {
           icon: Icons.speed_rounded,
           label: 'Speed',
           value: '${package['speed'] ?? 'Unavailable'}',
+        ),
+        _CustomerMetric(
+          icon: Icons.timer_outlined,
+          label: 'Connected for',
+          value: _connectedForLabel(
+            network['connected_seconds'],
+            network['pppoe_online'],
+          ),
+          detail: network['connected_since']?.toString(),
         ),
         _CustomerMetric(
           icon: Icons.event_available_rounded,
@@ -843,12 +818,12 @@ class _CustomerQuickActions extends StatelessWidget {
             _QuickAction(
               icon: Icons.monitor_heart_rounded,
               label: 'Live',
-              onTap: () => onOpen('live'),
+              onTap: () => onOpen('traffic'),
             ),
             _QuickAction(
               icon: Icons.receipt_long_rounded,
               label: 'Bills',
-              onTap: () => onOpen('bills'),
+              onTap: () => onOpen('sales'),
             ),
             _QuickAction(
               icon: Icons.support_agent_rounded,
