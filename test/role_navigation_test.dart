@@ -30,6 +30,16 @@ Future<void> showRole(WidgetTester tester, String role) async {
       role: role,
       name: 'Test User',
       load: fakeSection,
+      loadTickets: () async => {'available': true, 'items': []},
+      ticketDetail: (_) async => {
+        'ticket': {'subject': 'Test', 'status': 'open'},
+        'events': []
+      },
+      createTicket: (_) async => {'id': 1},
+      updateTicket: (_) async => {'id': 1},
+      ticketNotifications: () async => {'unread': 0, 'items': []},
+      readTicketNotification: (_) async => {'ok': true},
+      searchCustomers: (_) async => {'available': true, 'items': []},
       searchRecharge: (_) async => {'available': true, 'items': []},
       rechargeOptions: (_) async => {'customer': {}, 'items': []},
       loadAdminProfile: (_) async => {
@@ -66,20 +76,38 @@ void main() {
   testWidgets('customer Home Live Bills ONU Inbox Account navigation',
       (tester) async {
     await showRole(tester, 'customer');
-    expect(find.text('Arivo · Home'), findsOneWidget);
-    for (final label in ['Live', 'Bills', 'ONU', 'Inbox', 'Account', 'Home']) {
+    expect(find.text('JM Broadband · Home'), findsOneWidget);
+    for (final label in [
+      'Live',
+      'Support',
+      'Bills',
+      'ONU',
+      'Inbox',
+      'Account',
+      'Home'
+    ]) {
+      if (!['Home', 'Live', 'Support', 'Account'].contains(label)) {
+        await tester.tap(find.text('More').last);
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.text(label).last);
+      await tester.pump(const Duration(milliseconds: 450));
       await tester.pump();
-      expect(find.text('Arivo · $label'), findsOneWidget);
+      expect(find.text('JM Broadband · $label'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });
   testWidgets('reseller page navigation', (tester) async {
     await showRole(tester, 'reseller');
     for (final label in ['Customers', 'Sales', 'ONU', 'Account', 'Overview']) {
+      if (label == 'ONU') {
+        await tester.tap(find.text('More').last);
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.text(label).last);
+      await tester.pump(const Duration(milliseconds: 450));
       await tester.pump();
-      expect(find.text('Arivo · $label'), findsOneWidget);
+      expect(find.text('JM Broadband · $label'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });
@@ -87,14 +115,21 @@ void main() {
     await showRole(tester, 'admin');
     for (final label in [
       'Customers',
+      'Recharge',
+      'Support',
       'Resellers',
       'Sales',
-      'More',
+      'Expiry',
       'Overview'
     ]) {
+      if (['Resellers', 'Sales', 'Expiry'].contains(label)) {
+        await tester.tap(find.text('More').last);
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.text(label).last);
+      await tester.pump(const Duration(milliseconds: 450));
       await tester.pump();
-      expect(find.text('Arivo · $label'), findsOneWidget);
+      expect(find.text('JM Broadband · $label'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
   });

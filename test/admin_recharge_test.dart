@@ -26,6 +26,26 @@ Future<void> showRechargeRole(WidgetTester tester, String role) async {
             : []
       },
       loadTraffic: () async => {},
+      loadTickets: () async => {'available': true, 'items': []},
+      ticketDetail: (_) async => {
+        'ticket': {'subject': 'Test', 'status': 'open'},
+        'events': []
+      },
+      createTicket: (_) async => {'id': 1},
+      updateTicket: (_) async => {'id': 1},
+      ticketNotifications: () async => {'unread': 0, 'items': []},
+      readTicketNotification: (_) async => {'ok': true},
+      searchCustomers: (_) async => {
+        'available': true,
+        'items': [
+          {
+            'id': 1,
+            'username': 'test-user',
+            'fullname': 'Test User',
+            'status': 'Active'
+          }
+        ]
+      },
       searchRecharge: (_) async => {
         'available': true,
         'items': [
@@ -101,13 +121,15 @@ void main() {
     await showRechargeRole(tester, 'reseller');
     expect(find.text('Expiry'), findsNothing);
     await showRechargeRole(tester, 'admin');
+    await tester.tap(find.text('More').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Expiry').last);
     await tester.pumpAndSettle();
     expect(find.text('Expiry period'), findsOneWidget);
     expect(find.text('Customers: 0'), findsOneWidget);
     await tester.tap(find.text('Customers').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Profile / history').first);
+    await tester.tap(find.text('Details').first);
     await tester.pumpAndSettle();
     expect(find.text('Customer profile'), findsOneWidget);
     expect(find.text('Recorded transaction history'), findsOneWidget);

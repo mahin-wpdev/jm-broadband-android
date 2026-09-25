@@ -21,6 +21,16 @@ Future<void> showHome(WidgetTester tester, Map<String, dynamic> usage,
         'monthly_usage': usage,
         'traffic_peak': trafficPeak,
       },
+      loadTickets: () async => {'available': true, 'items': []},
+      ticketDetail: (_) async => {
+        'ticket': {'subject': 'Test', 'status': 'open'},
+        'events': []
+      },
+      createTicket: (_) async => {'id': 1},
+      updateTicket: (_) async => {'id': 1},
+      ticketNotifications: () async => {'unread': 0, 'items': []},
+      readTicketNotification: (_) async => {'ok': true},
+      searchCustomers: (_) async => {'available': true, 'items': []},
       searchRecharge: (_) async => {'available': true, 'items': []},
       rechargeOptions: (_) async => {'customer': {}, 'items': []},
       loadAdminProfile: (_) async => {

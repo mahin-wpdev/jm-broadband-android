@@ -192,6 +192,28 @@ class AppUpdater {
     }
   }
 
+  // Preload while the Flutter process remains alive. Installation always
+  // requires an explicit Android confirmation after hash/size verification.
+  static final ValueNotifier<double> backgroundProgress = ValueNotifier(0);
+  static Future<File>? _backgroundApk;
+  static String? _backgroundKey;
+  static Future<File> prefetch(AppRelease release) {
+    final key = '${release.build}:${release.sha256}';
+    if (_backgroundKey == key && _backgroundApk != null) {
+      return _backgroundApk!;
+    }
+    _backgroundKey = key;
+    backgroundProgress.value = 0;
+    final pending = download(release, (fraction) {
+      if (_backgroundKey == key) backgroundProgress.value = fraction;
+    });
+    _backgroundApk = pending;
+    unawaited(pending.then<void>((_) {}, onError: (Object e, StackTrace st) {
+      if (_backgroundKey == key) _backgroundApk = null;
+    }));
+    return pending;
+  }
+
   static Future<File> download(
       AppRelease release, void Function(double fraction) onProgress) async {
     if (!Platform.isAndroid) throw StateError('Android is required.');
@@ -251,27 +273,50 @@ class AppUpdater {
 
 class AppUpdatePage extends StatefulWidget {
   final AppRelease release;
+  final File? preparedApk;
   final VoidCallback? onLater;
-  const AppUpdatePage({super.key, required this.release, this.onLater});
+  const AppUpdatePage(
+      {super.key, required this.release, this.preparedApk, this.onLater});
   @override
   State<AppUpdatePage> createState() => _AppUpdatePageState();
 }
 
 class _AppUpdatePageState extends State<AppUpdatePage> {
+  @override
+  void initState() {
+    super.initState();
+    AppUpdater.backgroundProgress.addListener(onProgress);
+    if (Platform.isAndroid && widget.preparedApk == null) {
+      unawaited(AppUpdater.prefetch(widget.release).then<void>((_) {},
+          onError: (Object e, StackTrace st) {
+        if (mounted) setState(() => error = 'Download failed: $e');
+      }));
+    }
+  }
+
+  void onProgress() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    AppUpdater.backgroundProgress.removeListener(onProgress);
+    super.dispose();
+  }
+
   bool busy = false;
-  double progress = 0;
+  double get progress =>
+      widget.preparedApk != null ? 1 : AppUpdater.backgroundProgress.value;
   String? error;
   Future<void> install() async {
     if (busy) return;
     setState(() {
       busy = true;
-      progress = 0;
       error = null;
     });
     try {
-      final apk = await AppUpdater.download(widget.release, (value) {
-        if (mounted) setState(() => progress = value);
-      });
+      final apk =
+          widget.preparedApk ?? await AppUpdater.prefetch(widget.release);
       final result = await OpenFilex.open(apk.path,
           type: 'application/vnd.android.package-archive');
       if (result.type != ResultType.done) throw StateError(result.message);
@@ -296,7 +341,11 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.system_update_alt, size: 64),
+                Icon(
+                    widget.preparedApk != null
+                        ? Icons.download_done_rounded
+                        : Icons.system_update_alt_rounded,
+                    size: 64),
                 const SizedBox(height: 20),
                 Text('Version ${widget.release.version}',
                     style: Theme.of(context).textTheme.headlineSmall),
@@ -310,7 +359,7 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
                   const SizedBox(height: 12),
                   Text(widget.release.notes, textAlign: TextAlign.center),
                 ],
-                if (busy) ...[
+                if (busy || (progress > 0 && progress < 1)) ...[
                   const SizedBox(height: 16),
                   LinearProgressIndicator(value: progress),
                   Text('${(progress * 100).round()}% downloaded'),
@@ -323,7 +372,11 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
                 FilledButton.icon(
                     onPressed: busy ? null : install,
                     icon: const Icon(Icons.download),
-                    label: Text(busy ? 'Downloading…' : 'Download & Install')),
+                    label: Text(busy
+                        ? 'Opening installer…'
+                        : progress >= 1
+                            ? 'Install downloaded update'
+                            : 'Download & Install')),
                 if (!widget.release.required)
                   TextButton(
                       onPressed:

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'live_traffic.dart';
 import 'admin_recharge_page.dart';
 import 'admin_customer_pages.dart';
+import 'support_tickets_page.dart';
 import 'server_traffic_peak.dart';
 
 /// Actual read-only Panel data. The client never supplies an actor/customer ID.
@@ -12,6 +14,16 @@ class PanelWorkspace extends StatefulWidget {
   final Future<Map<String, dynamic>> Function() loadTraffic;
   final String trafficHistoryKey;
   final Future<Map<String, dynamic>> Function(String query) searchRecharge;
+  final Future<Map<String, dynamic>> Function(String query) searchCustomers;
+  final Future<Map<String, dynamic>> Function() loadTickets;
+  final Future<Map<String, dynamic>> Function(int ticketId) ticketDetail;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> data)
+      createTicket;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> data)
+      updateTicket;
+  final Future<Map<String, dynamic>> Function() ticketNotifications;
+  final Future<Map<String, dynamic>> Function(int notificationId)
+      readTicketNotification;
   final Future<Map<String, dynamic>> Function(int customerId) rechargeOptions;
   final Future<Map<String, dynamic>> Function(int customerId) loadAdminProfile;
   final Future<Map<String, dynamic>> Function(String window) loadExpiry;
@@ -30,6 +42,13 @@ class PanelWorkspace extends StatefulWidget {
     required this.loadTraffic,
     required this.trafficHistoryKey,
     required this.searchRecharge,
+    required this.searchCustomers,
+    required this.loadTickets,
+    required this.ticketDetail,
+    required this.createTicket,
+    required this.updateTicket,
+    required this.ticketNotifications,
+    required this.readTicketNotification,
     required this.rechargeOptions,
     required this.loadAdminProfile,
     required this.loadExpiry,
@@ -46,6 +65,12 @@ class PanelWorkspace extends StatefulWidget {
 class _PanelWorkspaceState extends State<PanelWorkspace> {
   int selected = 0;
   late Future<Map<String, dynamic>> pending;
+  final customerSearch = TextEditingController();
+  Timer? customerDebounce;
+  Timer? ticketAlertTimer;
+  int unreadAlerts = 0;
+  bool alertsInitialized = false;
+  bool alertsFetching = false;
 
   List<_Page> get pages => switch (widget.role) {
         'customer' => const [
@@ -54,7 +79,10 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('Bills', 'sales', Icons.receipt_long_outlined),
             _Page('ONU', 'onus', Icons.router_outlined),
             _Page('Inbox', 'inbox', Icons.inbox_outlined),
+            _Page('Support', 'support', Icons.support_agent_rounded),
+            _Page('Alerts', 'alerts', Icons.notifications_rounded),
             _Page('Account', 'account', Icons.person_outline),
+            _Page('More', 'more', Icons.grid_view_rounded),
           ],
         'reseller' => const [
             _Page('Overview', 'home', Icons.dashboard_outlined),
@@ -62,6 +90,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
             _Page('ONU', 'onus', Icons.router_outlined),
             _Page('Account', 'account', Icons.person_outline),
+            _Page('More', 'more', Icons.grid_view_rounded),
           ],
         _ => const [
             _Page('Overview', 'home', Icons.dashboard_outlined),
@@ -70,14 +99,73 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
             _Page('Expiry', 'expiry', Icons.event_busy_outlined),
             _Page('Recharge', 'recharge', Icons.add_card_outlined),
+            _Page('Support', 'support', Icons.support_agent_rounded),
+            _Page('Alerts', 'alerts', Icons.notifications_rounded),
             _Page('More', 'more', Icons.apps_outlined),
           ],
       };
+
+  List<String> get primarySections => switch (widget.role) {
+        'customer' => const ['home', 'traffic', 'support', 'account'],
+        'reseller' => const ['home', 'customers', 'sales', 'account'],
+        _ => const ['home', 'customers', 'recharge', 'support'],
+      };
+
+  void openMore() {
+    final index = pages.indexWhere((p) => p.section == 'more');
+    if (index >= 0) change(index);
+  }
 
   @override
   void initState() {
     super.initState();
     pending = widget.load('home');
+    if (widget.role == 'customer' ||
+        widget.role == 'admin' ||
+        widget.role == 'superadmin') {
+      WidgetsBinding.instance.addPostFrameCallback((_) => checkTicketAlerts());
+      ticketAlertTimer = Timer.periodic(
+          const Duration(seconds: 45), (_) => checkTicketAlerts());
+    }
+  }
+
+  @override
+  void dispose() {
+    customerDebounce?.cancel();
+    ticketAlertTimer?.cancel();
+    customerSearch.dispose();
+    super.dispose();
+  }
+
+  Future<void> checkTicketAlerts() async {
+    if (!mounted || alertsFetching) return;
+    alertsFetching = true;
+    try {
+      final data = await widget.ticketNotifications();
+      final next = int.tryParse('${data['unread']}') ?? 0;
+      if (mounted) {
+        final increased = alertsInitialized && next > unreadAlerts;
+        setState(() => unreadAlerts = next);
+        alertsInitialized = true;
+        if (increased) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('New support ticket activity. Check Alerts.')));
+        }
+      }
+    } catch (_) {
+      // Keep the rest of the app usable if tickets are unavailable.
+    } finally {
+      alertsFetching = false;
+    }
+  }
+
+  void onCustomerQuery(String query) {
+    customerDebounce?.cancel();
+    customerDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted && pages[selected].section == 'customers') {
+        setState(() => pending = widget.searchCustomers(query));
+      }
+    });
   }
 
   void change(int index) {
@@ -88,15 +176,21 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
               section == 'more' ||
               section == 'traffic' ||
               section == 'recharge' ||
-              section == 'expiry')
+              section == 'expiry' ||
+              section == 'support' ||
+              section == 'alerts')
           ? Future.value(<String, dynamic>{'available': true})
-          : widget.load(section);
+          : section == 'customers'
+              ? widget.searchCustomers(customerSearch.text.trim())
+              : widget.load(section);
     });
   }
 
   Future<void> refresh() async {
     final section = pages[selected].section;
-    final next = widget.load(section);
+    final next = section == 'customers'
+        ? widget.searchCustomers(customerSearch.text.trim())
+        : widget.load(section);
     setState(() => pending = next);
     try {
       await next;
@@ -130,18 +224,33 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
     final page = pages[selected];
     return Scaffold(
       appBar: AppBar(
-        title: Text('Arivo · ${page.title}'),
+        title: Text('JM Broadband · ${page.title}'),
         actions: [
+          if (widget.role == 'customer' ||
+              widget.role == 'admin' ||
+              widget.role == 'superadmin')
+            IconButton(
+                tooltip: 'Support notifications',
+                onPressed: () {
+                  final index = pages.indexWhere((p) => p.section == 'alerts');
+                  if (index >= 0) change(index);
+                  checkTicketAlerts();
+                },
+                icon: unreadAlerts > 0
+                    ? Badge.count(
+                        count: unreadAlerts,
+                        child: const Icon(Icons.notifications_active_rounded))
+                    : const Icon(Icons.notifications_none_rounded)),
           IconButton(
             tooltip: 'Check for app updates',
             onPressed: () async {
               try {
                 final found = await widget.onCheckForUpdates();
-                if (!found && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('You have the latest app version.')),
-                  );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(found
+                          ? 'Update found. Downloading securely in the background…'
+                          : 'You have the latest app version.')));
                 }
               } catch (_) {
                 if (context.mounted) {
@@ -160,7 +269,9 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                     page.section == 'more' ||
                     page.section == 'traffic' ||
                     page.section == 'recharge' ||
-                    page.section == 'expiry')
+                    page.section == 'expiry' ||
+                    page.section == 'support' ||
+                    page.section == 'alerts')
                 ? null
                 : refresh,
             icon: const Icon(Icons.refresh),
@@ -176,12 +287,40 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
         'account' => _AccountPage(name: widget.name, role: widget.role),
         'traffic' => LiveTrafficPage(
             load: widget.loadTraffic, historyKey: widget.trafficHistoryKey),
-        'more' => _MorePage(load: widget.load),
+        'more' => _MorePage(
+            load: widget.load,
+            otherPages: pages
+                .where((p) =>
+                    p.section != 'more' && !primarySections.contains(p.section))
+                .toList(),
+            onSelect: (section) {
+              final index = pages.indexWhere((p) => p.section == section);
+              if (index >= 0) change(index);
+            },
+            showAdminInventory:
+                widget.role == 'admin' || widget.role == 'superadmin'),
         'recharge' => AdminRechargePage(
             search: widget.searchRecharge,
             options: widget.rechargeOptions,
             preview: widget.rechargePreview,
             recharge: widget.recharge),
+        'support' => SupportTicketsPage(
+            role: widget.role,
+            load: widget.loadTickets,
+            detail: widget.ticketDetail,
+            create: widget.createTicket,
+            update: widget.updateTicket),
+        'alerts' => TicketNotificationsPage(
+            load: widget.ticketNotifications,
+            markRead: widget.readTicketNotification,
+            onTicket: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => SupportTicketDetailsPage(
+                        ticketId: id,
+                        role: widget.role,
+                        load: widget.ticketDetail,
+                        update: widget.updateTicket))),
+          ),
         'expiry' => AdminExpiryPage(
             load: widget.loadExpiry, onCustomer: (id) => openCustomer(id)),
         _ => FutureBuilder<Map<String, dynamic>>(
@@ -206,32 +345,74 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                   retry: refresh,
                 );
               }
-              return RefreshIndicator(
-                onRefresh: refresh,
-                child: _SectionView(
-                  section: page.section,
-                  data: data,
-                  onRecharge:
-                      (widget.role == 'admin' || widget.role == 'superadmin') &&
-                              page.section == 'customers'
-                          ? openRecharge
-                          : null,
-                  onProfile:
-                      (widget.role == 'admin' || widget.role == 'superadmin') &&
-                              page.section == 'customers'
-                          ? openCustomer
-                          : null,
-                ),
-              );
+              return Column(children: [
+                if (page.section == 'customers')
+                  Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: TextField(
+                        controller: customerSearch,
+                        onChanged: onCustomerQuery,
+                        onSubmitted: (q) {
+                          customerDebounce?.cancel();
+                          setState(() => pending = widget.searchCustomers(q));
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'Search customers',
+                          hintText: 'Name, username, PPPoE or phone',
+                          prefixIcon: const Icon(Icons.manage_search_rounded),
+                          suffixIcon: IconButton(
+                              tooltip: 'Clear search',
+                              onPressed: () {
+                                customerSearch.clear();
+                                customerDebounce?.cancel();
+                                setState(
+                                    () => pending = widget.searchCustomers(''));
+                              },
+                              icon: const Icon(Icons.clear_rounded)),
+                        ),
+                      )),
+                Expanded(
+                    child: RefreshIndicator(
+                  onRefresh: refresh,
+                  child: _SectionView(
+                    section: page.section,
+                    data: data,
+                    onRecharge: (widget.role == 'admin' ||
+                                widget.role == 'superadmin') &&
+                            page.section == 'customers'
+                        ? openRecharge
+                        : null,
+                    onProfile: (widget.role == 'admin' ||
+                                widget.role == 'superadmin') &&
+                            page.section == 'customers'
+                        ? openCustomer
+                        : null,
+                  ),
+                ))
+              ]);
             },
           ),
       },
       bottomNavigationBar: NavigationBar(
-        selectedIndex: selected,
-        onDestinationSelected: change,
+        selectedIndex: !primarySections.contains(page.section)
+            ? 4
+            : primarySections.indexOf(page.section),
+        onDestinationSelected: (index) {
+          if (index == 4) {
+            openMore();
+            return;
+          }
+          final pageIndex =
+              pages.indexWhere((p) => p.section == primarySections[index]);
+          if (pageIndex >= 0) change(pageIndex);
+        },
         destinations: [
-          for (final p in pages)
-            NavigationDestination(icon: Icon(p.icon), label: p.title),
+          for (final section in primarySections)
+            NavigationDestination(
+                icon: Icon(pages.firstWhere((p) => p.section == section).icon),
+                label: pages.firstWhere((p) => p.section == section).title),
+          const NavigationDestination(
+              icon: Icon(Icons.grid_view_rounded), label: 'More'),
         ],
       ),
     );
@@ -282,24 +463,18 @@ class _SectionView extends StatelessWidget {
         for (final row in rows) {
           if (row is Map) {
             final map = Map<String, dynamic>.from(row);
-            // The backend exposes an explicit, limited field set per role.
-            elements.add(_InfoCard(
-              title: _rowTitle(map, section),
-              values: map,
-            ));
-            if (section == 'customers' && onProfile != null) {
-              elements.add(
-                  Wrap(alignment: WrapAlignment.end, spacing: 8, children: [
-                OutlinedButton.icon(
-                    onPressed: () => onProfile!(int.parse('${map['id']}')),
-                    icon: const Icon(Icons.person_search),
-                    label: const Text('Profile / history')),
-                if (onRecharge != null && map['status'] == 'Active')
-                  FilledButton.icon(
-                      onPressed: () => onRecharge!('${map['username']}'),
-                      icon: const Icon(Icons.add_card_outlined),
-                      label: const Text('Recharge')),
-              ]));
+            if (section == 'customers') {
+              elements.add(_CustomerCompactCard(
+                  customer: map,
+                  onProfile: onProfile == null
+                      ? null
+                      : () => onProfile!(int.parse('${map['id']}')),
+                  onRecharge: onRecharge == null || map['status'] != 'Active'
+                      ? null
+                      : () => onRecharge!('${map['username']}')));
+            } else {
+              elements
+                  .add(_InfoCard(title: _rowTitle(map, section), values: map));
             }
           }
         }
@@ -415,6 +590,69 @@ Widget _serverPeakCard(ServerTrafficPeak peak) {
   });
 }
 
+class _CustomerCompactCard extends StatelessWidget {
+  final Map<String, dynamic> customer;
+  final VoidCallback? onProfile;
+  final VoidCallback? onRecharge;
+  const _CustomerCompactCard(
+      {required this.customer,
+      required this.onProfile,
+      required this.onRecharge});
+  @override
+  Widget build(BuildContext context) {
+    final active = customer['status'] == 'Active';
+    final color = active ? const Color(0xFF008F73) : const Color(0xFFB45309);
+    return Card(
+        clipBehavior: Clip.antiAlias,
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: .12),
+                      child: Icon(Icons.person_rounded, color: color)),
+                  title: Text('${customer['fullname'] ?? 'Customer'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text('@${customer['username'] ?? ''}',
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: Chip(
+                      avatar: Icon(
+                          active
+                              ? Icons.check_circle_rounded
+                              : Icons.pause_circle_outline_rounded,
+                          size: 15,
+                          color: color),
+                      label: Text('${customer['status'] ?? 'Unknown'}',
+                          style: TextStyle(color: color, fontSize: 12))),
+                  onTap: onProfile,
+                ),
+                if (onProfile != null || onRecharge != null)
+                  Row(children: [
+                    if (onProfile != null)
+                      Expanded(
+                          child: OutlinedButton.icon(
+                              onPressed: onProfile,
+                              icon: const Icon(Icons.badge_outlined),
+                              label: const Text('Details'))),
+                    if (onProfile != null && onRecharge != null)
+                      const SizedBox(width: 8),
+                    if (onRecharge != null)
+                      Expanded(
+                          child: FilledButton.icon(
+                              onPressed: onRecharge,
+                              icon: const Icon(Icons.bolt_rounded),
+                              label: const Text('Recharge'))),
+                  ]),
+              ],
+            )));
+  }
+}
+
 class _InfoCard extends StatelessWidget {
   final String title;
   final Map<String, dynamic> values;
@@ -524,30 +762,47 @@ class _AccountPage extends StatelessWidget {
 
 class _MorePage extends StatelessWidget {
   final Future<Map<String, dynamic>> Function(String section) load;
-  const _MorePage({required this.load});
+  final List<_Page> otherPages;
+  final ValueChanged<String> onSelect;
+  final bool showAdminInventory;
+  const _MorePage(
+      {required this.load,
+      required this.otherPages,
+      required this.onSelect,
+      required this.showAdminInventory});
 
   @override
   Widget build(BuildContext context) => ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Text('Administrator · Additional Panel records'),
-          for (final entry in const [
-            _Page('Plans', 'plans', Icons.wifi_outlined),
-            _Page('Routers', 'routers', Icons.router_outlined),
-            _Page('ONU inventory', 'onus', Icons.cable_outlined),
-          ])
+          const Text('More services',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          for (final p in otherPages)
             Card(
-              child: ListTile(
-                leading: Icon(entry.icon),
-                title: Text(entry.title),
-                subtitle: const Text('Read-only'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (context) =>
-                      _StandaloneSection(page: entry, load: load),
-                )),
+                child: ListTile(
+                    leading: Icon(p.icon),
+                    title: Text(p.title),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => onSelect(p.section))),
+          if (showAdminInventory)
+            for (final entry in const [
+              _Page('Plans', 'plans', Icons.wifi_outlined),
+              _Page('Routers', 'routers', Icons.router_outlined),
+              _Page('ONU inventory', 'onus', Icons.cable_outlined),
+            ])
+              Card(
+                child: ListTile(
+                  leading: Icon(entry.icon),
+                  title: Text(entry.title),
+                  subtitle: const Text('Read-only'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () =>
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (context) =>
+                        _StandaloneSection(page: entry, load: load),
+                  )),
+                ),
               ),
-            ),
         ],
       );
 }

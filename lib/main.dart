@@ -77,6 +77,51 @@ http.Client createApiClient(Uri url) {
   return IOClient(HttpClient(context: context));
 }
 
+ThemeData jmPremiumTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: const Color(0xFF087F6B),
+    surface: const Color(0xFFF7FAF9),
+  );
+  final rounded =
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(18));
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: scheme.surface,
+    cardTheme: CardThemeData(
+        elevation: 0.6,
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: rounded,
+        clipBehavior: Clip.antiAlias),
+    appBarTheme: AppBarTheme(
+        centerTitle: false,
+        scrolledUnderElevation: 0.5,
+        backgroundColor: scheme.surface),
+    inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: .45),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: scheme.primary, width: 1.4))),
+    navigationBarTheme: NavigationBarThemeData(
+        height: 70,
+        elevation: 3,
+        indicatorShape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+    filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 48),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14)))),
+  );
+}
+
 class MobileApi {
   Uri? endpoint;
   String? accessToken;
@@ -247,7 +292,10 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   late final MobileApi api = widget.initialApi ?? MobileApi();
   bool loading = true;
   bool checkingUpdate = false;
+  bool prefetchingUpdate = false;
+  AppRelease? pendingUpdateRelease;
   AppRelease? updateRelease;
+  File? preparedUpdateApk;
   static final Uri _defaultUpdateEndpoint =
       normalizeServer('https://27.147.201.165/panel');
   @override
@@ -273,13 +321,48 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
   }
 
   Future<bool> _checkForUpdate({Uri? endpoint, bool manual = false}) async {
-    if (checkingUpdate) return updateRelease != null;
+    if (checkingUpdate || prefetchingUpdate) {
+      return updateRelease != null || pendingUpdateRelease != null;
+    }
     checkingUpdate = true;
     try {
       final release = await AppUpdater.check(
           endpoint ?? api.endpoint ?? _defaultUpdateEndpoint);
-      if (mounted) setState(() => updateRelease = release);
-      return release != null;
+      if (release == null) {
+        if (mounted) {
+          setState(() {
+            pendingUpdateRelease = null;
+            updateRelease = null;
+            preparedUpdateApk = null;
+          });
+        }
+        return false;
+      }
+      if (!Platform.isAndroid) {
+        if (mounted) setState(() => updateRelease = release);
+        return true;
+      }
+      prefetchingUpdate = true;
+      pendingUpdateRelease = release;
+      unawaited(AppUpdater.prefetch(release).then<void>((file) {
+        prefetchingUpdate = false;
+        if (!mounted || pendingUpdateRelease?.build != release.build) return;
+        setState(() {
+          preparedUpdateApk = file;
+          updateRelease = release;
+          pendingUpdateRelease = null;
+        });
+      }, onError: (Object error, StackTrace stack) {
+        prefetchingUpdate = false;
+        if (!mounted || pendingUpdateRelease?.build != release.build) return;
+        // Fall back to the update page so the user can retry interactively.
+        setState(() {
+          updateRelease = release;
+          pendingUpdateRelease = null;
+          preparedUpdateApk = null;
+        });
+      }));
+      return true;
     } catch (_) {
       if (manual) rethrow;
       return false;
@@ -308,17 +391,15 @@ class _JmAppState extends State<JmApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Arivo',
+        title: 'JM Broadband',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-            useMaterial3: true,
-            colorScheme:
-                ColorScheme.fromSeed(seedColor: const Color(0xFF10A88B))),
+        theme: jmPremiumTheme(),
         home: loading
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
             : updateRelease != null
                 ? AppUpdatePage(
                     release: updateRelease!,
+                    preparedApk: preparedUpdateApk,
                     onLater: updateRelease!.required
                         ? null
                         : () => setState(() => updateRelease = null))
@@ -354,9 +435,11 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    server.text =
-        widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ??
-            'https://27.147.201.165:8443/panel';
+    final endpoint = widget.api.endpoint;
+    server.text = endpoint?.host == '27.147.201.165'
+        ? 'https://27.147.201.165/panel/'
+        : endpoint?.toString().replaceAll('/mobile-api.php', '') ??
+            'https://27.147.201.165/panel/';
   }
 
   @override
@@ -396,7 +479,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Image.asset('assets/branding/logo.png',
                               height: 100, fit: BoxFit.contain),
                           const SizedBox(height: 15),
-                          const Text('Arivo',
+                          const Text('JM Broadband',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 30, fontWeight: FontWeight.bold)),
@@ -464,6 +547,37 @@ class RoleDashboard extends StatelessWidget {
       load: (section) async {
         final response =
             await api.request('mobile-data', query: {'section': section});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      searchCustomers: (query) async {
+        final response = await api.request('mobile-data',
+            query: {'section': 'customers', 'q': query});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      loadTickets: () async {
+        final response = await api.request('ticket-list');
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      ticketDetail: (ticketId) async {
+        final response = await api
+            .request('ticket-detail', query: {'ticket_id': '$ticketId'});
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      createTicket: (data) async {
+        final response = await api.request('ticket-create', body: data);
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      updateTicket: (data) async {
+        final response = await api.request('ticket-update', body: data);
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      ticketNotifications: () async {
+        final response = await api.request('ticket-notifications');
+        return Map<String, dynamic>.from(response['data'] as Map);
+      },
+      readTicketNotification: (id) async {
+        final response = await api
+            .request('ticket-notification-read', body: {'notification_id': id});
         return Map<String, dynamic>.from(response['data'] as Map);
       },
       searchRecharge: (query) async {
