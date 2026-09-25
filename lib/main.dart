@@ -44,12 +44,9 @@ Uri normalizeServer(String input) {
     throw const FormatException(
         'Use a valid HTTPS domain or IP and optional /panel path');
   }
-  // This public IP accepts HTTPS from LTE on 8443; the existing 443 path
-  // remains available when the user explicitly enters :443.
-  final useJmMobilePort = uri.host == '27.147.201.165' &&
-      uri.port == 443 &&
-      !RegExp(r':443(?:/|$)').hasMatch(value);
-  final effective = useJmMobilePort ? uri.replace(port: 8443) : uri;
+  // Use standard HTTPS (443) as the primary endpoint so the same server URL
+  // works on JM LAN, mobile data, and other ISPs. Port 8443 remains a fallback.
+  final effective = uri;
   var path = effective.path.replaceAll(RegExp(r'/+$'), '');
   if (effective.host == '27.147.201.165' && path.isEmpty) path = '/panel';
   if (path.endsWith('/mobile-api.php')) return effective.replace(path: path);
@@ -57,6 +54,15 @@ Uri normalizeServer(String input) {
 }
 
 // An Android key-reset result is not a saved server address.
+Uri? jmAlternateEndpoint(Uri current) {
+  if (current.scheme != 'https' || current.host != '27.147.201.165') {
+    return null;
+  }
+  if (current.port == 8443) return current.replace(port: 443);
+  if (current.port == 443) return current.replace(port: 8443);
+  return null;
+}
+
 Uri? restoredServerUri(String? value) {
   if (value == null || value == 'Data has been reset') return null;
   return normalizeServer(value);
@@ -146,8 +152,8 @@ class MobileApi {
       endpoint = restoredEndpoint;
       final newTokenKey = 'refresh:${endpoint.toString()}';
       refreshToken = await _storage.read(key: newTokenKey);
-      // Migrate the old :443 session to the LTE-safe :8443 entrypoint
-      // without deleting the previous saved token or reinstalling the app.
+      // Migrate a token saved under an older normalized endpoint without
+      // deleting the previous saved token or requiring an app reinstall.
       if (refreshToken == null &&
           server != null &&
           server != endpoint.toString()) {
@@ -173,41 +179,71 @@ class MobileApi {
       Map<String, String>? query,
       bool retry = true}) async {
     if (endpoint == null) throw StateError('Server is not configured');
-    final url =
-        endpoint!.replace(queryParameters: {'action': action, ...?query});
     final headers = <String, String>{
       'Accept': 'application/json',
       if (body != null) 'Content-Type': 'application/json',
       if (authorized && accessToken != null)
         'Authorization': 'Bearer $accessToken',
     };
-    // Never follow redirects: credentials must not cross server origins.
-    final client = createApiClient(url);
+
+    Future<http.Response> sendOnce(Uri target) async {
+      final client = createApiClient(target);
+      try {
+        final req = http.Request(body == null ? 'GET' : 'POST', target);
+        req.followRedirects = false;
+        req.headers.addAll(headers);
+        if (body != null) req.body = jsonEncode(body);
+        final streamed =
+            await client.send(req).timeout(const Duration(seconds: 15));
+        if (streamed.statusCode >= 300 && streamed.statusCode < 400) {
+          throw StateError(
+              'Server redirected the API request; verify its HTTPS panel URL');
+        }
+        return await http.Response.fromStream(streamed)
+            .timeout(const Duration(seconds: 15));
+      } finally {
+        client.close();
+      }
+    }
+
+    Future<http.Response> portFallback(String message) async {
+      final current = endpoint!;
+      final alternate = jmAlternateEndpoint(current);
+      if (alternate == null) throw StateError(message);
+      final alternateUrl =
+          alternate.replace(queryParameters: {'action': action, ...?query});
+      try {
+        final alternateResult = await sendOnce(alternateUrl);
+        endpoint = alternate;
+        await _storage.write(key: 'server', value: alternate.toString());
+        if (refreshToken != null) {
+          await _storage.write(
+              key: 'refresh:${alternate.toString()}', value: refreshToken);
+        }
+        return alternateResult;
+      } on TimeoutException {
+        throw StateError(message);
+      } on SocketException {
+        throw StateError(message);
+      } on HandshakeException {
+        throw StateError(message);
+      }
+    }
+
+    final url =
+        endpoint!.replace(queryParameters: {'action': action, ...?query});
     late final http.Response result;
     try {
-      final req = http.Request(body == null ? 'GET' : 'POST', url);
-      req.followRedirects = false;
-      req.headers.addAll(headers);
-      if (body != null) req.body = jsonEncode(body);
-      final streamed =
-          await client.send(req).timeout(const Duration(seconds: 15));
-      if (streamed.statusCode >= 300 && streamed.statusCode < 400) {
-        throw StateError(
-            'Server redirected the API request; verify its HTTPS panel URL');
-      }
-      result = await http.Response.fromStream(streamed)
-          .timeout(const Duration(seconds: 15));
+      result = await sendOnce(url);
     } on TimeoutException {
-      throw StateError(
+      result = await portFallback(
           'Server connection timed out. Check the HTTPS server connection.');
     } on SocketException {
-      throw StateError(
+      result = await portFallback(
           'Cannot reach the Mobile API over HTTPS. Check your network or VPN and the server URL.');
     } on HandshakeException {
-      throw StateError(
+      result = await portFallback(
           'HTTPS certificate verification failed. Check the server certificate.');
-    } finally {
-      client.close();
     }
     Map<String, dynamic> response;
     try {
