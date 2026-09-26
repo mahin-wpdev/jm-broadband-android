@@ -1,7 +1,7 @@
 name: jm_broadband_app
 description: Unified server-selectable ISP mobile app foundation.
 publish_to: none
-version: 0.1.0+1
+version: 1.0.4+5
 environment:
   sdk: '>=3.3.0 <4.0.0'
 dependencies:
@@ -15,3 +15,6 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/logo.png
+    - assets/branding/icon.png

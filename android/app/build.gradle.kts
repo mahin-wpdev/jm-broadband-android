@@ -1,7 +1,23 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val releaseSigningPropertiesFile = rootProject.file("key.properties")
+val releaseSigningProperties = Properties()
+if (releaseSigningPropertiesFile.exists()) {
+    releaseSigningPropertiesFile.inputStream().use { releaseSigningProperties.load(it) }
+}
+// Fail closed on release tasks when local upload credentials are not configured.
+if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) } &&
+    (!releaseSigningPropertiesFile.exists() ||
+     listOf("keyAlias", "keyPassword", "storeFile", "storePassword").any {
+         releaseSigningProperties.getProperty(it).isNullOrBlank()
+     })) {
+    throw GradleException("Release signing is not configured: create android/key.properties")
 }
 
 android {
@@ -29,11 +45,23 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release credentials live only in android/key.properties (gitignored).
+    signingConfigs {
+        if (releaseSigningPropertiesFile.exists()) {
+            create("release") {
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+                storeFile = file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+            }
+        }
+    }
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Never sign a public APK/AAB using Android's debug key.
+            if (releaseSigningPropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

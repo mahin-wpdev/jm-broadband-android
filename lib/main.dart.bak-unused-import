@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'customer_dashboard.dart';
 import 'panel_workspace.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -110,14 +111,7 @@ class MobileApi {
       result = await http.Response.fromStream(streamed)
           .timeout(const Duration(seconds: 15));
     } on TimeoutException {
-      throw StateError(
-          'Server connection timed out. Check the HTTPS server connection.');
-    } on SocketException {
-      throw StateError(
-          'Cannot reach the Mobile API over HTTPS. Check your network or VPN and the server URL.');
-    } on HandshakeException {
-      throw StateError(
-          'HTTPS certificate verification failed. Check the server certificate.');
+      throw StateError('Server connection timed out');
     } finally {
       client.close();
     }
@@ -222,7 +216,7 @@ class _JmAppState extends State<JmApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Arivo',
+        title: 'JM Broadband',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
             useMaterial3: true,
@@ -254,8 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     server.text =
-        widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ??
-            'https://27.147.201.165/panel';
+        widget.api.endpoint?.toString().replaceAll('/mobile-api.php', '') ?? '';
   }
 
   @override
@@ -292,10 +285,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Image.asset('assets/branding/logo.png',
-                              height: 100, fit: BoxFit.contain),
+                          const Icon(Icons.wifi_rounded,
+                              size: 70, color: Color(0xFF10A88B)),
                           const SizedBox(height: 15),
-                          const Text('Arivo',
+                          const Text('JM Broadband',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                   fontSize: 30, fontWeight: FontWeight.bold)),
@@ -360,12 +353,6 @@ class RoleDashboard extends StatelessWidget {
             await api.request('mobile-data', query: {'section': section});
         return Map<String, dynamic>.from(response['data'] as Map);
       },
-      loadTraffic: () async {
-        final response = await api.request('live-traffic');
-        return Map<String, dynamic>.from(response['data'] as Map);
-      },
-      trafficHistoryKey: 'arivo:traffic:${api.endpoint}:${user['role']}:'
-          '${user['id'] ?? user['username']}',
       onLogout: () async {
         await api.logout();
         onLogout();
