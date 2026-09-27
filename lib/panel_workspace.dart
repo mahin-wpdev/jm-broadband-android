@@ -12,7 +12,8 @@ class PanelWorkspace extends StatefulWidget {
   final String name;
   final Future<Map<String, dynamic>> Function(String section) load;
   final Future<Map<String, dynamic>> Function() loadTraffic;
-  final Future<Map<String, dynamic>> Function(int customerId)? loadCustomerTraffic;
+  final Future<Map<String, dynamic>> Function(int customerId)?
+      loadCustomerTraffic;
   final String trafficHistoryKey;
   final Future<Map<String, dynamic>> Function(String query) searchRecharge;
   final Future<Map<String, dynamic>> Function(String query) searchCustomers;
@@ -99,7 +100,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('More', 'more', Icons.grid_view_rounded),
           ],
         'reseller' => const [
-            _Page('Overview', 'home', Icons.dashboard_outlined),
+            _Page('Dashboard', 'home', Icons.dashboard_outlined),
             _Page('Customers', 'customers', Icons.group_outlined),
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
             _Page('ONU', 'onus', Icons.router_outlined),
@@ -107,7 +108,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             _Page('More', 'more', Icons.grid_view_rounded),
           ],
         _ => const [
-            _Page('Overview', 'home', Icons.dashboard_outlined),
+            _Page('Dashboard', 'home', Icons.dashboard_outlined),
             _Page('Customers', 'customers', Icons.group_outlined),
             _Page('Resellers', 'resellers', Icons.groups_outlined),
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
@@ -240,10 +241,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                     appBar: AppBar(title: const Text('Customer live traffic')),
                     body: LiveTrafficPage(
                         load: () => widget.loadCustomerTraffic == null
-                            ? Future.value(<String, dynamic>{
-                                'available': false,
-                                'message': 'Customer traffic monitoring is unavailable.'
-                              })
+                            ? Future.value(
+                                <String, dynamic>{'available': false, 'message': 'Customer traffic monitoring is unavailable.'})
                             : widget.loadCustomerTraffic!(id),
                         historyKey: '${widget.trafficHistoryKey}:customer:$id')))))));
   }
@@ -411,14 +410,13 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                   child: _SectionView(
                     section: page.section,
                     data: data,
+                    actorName: widget.name,
                     unreadAlerts: unreadAlerts,
-                    onOpenSection: widget.role == 'customer'
-                        ? (section) {
-                            final index =
-                                pages.indexWhere((p) => p.section == section);
-                            if (index >= 0) change(index);
-                          }
-                        : null,
+                    onOpenSection: (section) {
+                      final index =
+                          pages.indexWhere((p) => p.section == section);
+                      if (index >= 0) change(index);
+                    },
                     onRecharge: (widget.role == 'admin' ||
                                 widget.role == 'superadmin') &&
                             page.section == 'customers'
@@ -476,9 +474,11 @@ class _SectionView extends StatelessWidget {
   final void Function(int customerId)? onProfile;
   final ValueChanged<String>? onOpenSection;
   final int unreadAlerts;
+  final String actorName;
   const _SectionView(
       {required this.section,
       required this.data,
+      this.actorName = '',
       this.onRecharge,
       this.onProfile,
       this.onOpenSection,
@@ -594,10 +594,23 @@ class _SectionView extends StatelessWidget {
         const SizedBox(height: 6),
       ];
     }
+    final role = '${data['role'] ?? 'admin'}';
+    final summary = _asMap(data['summary']);
     return [
-      Text(data['role'] == 'reseller' ? 'Reseller overview' : 'Admin overview',
-          style: Theme.of(context).textTheme.headlineSmall),
-      _InfoCard(title: 'Panel records', values: _asMap(data['summary'])),
+      _StaffStatusHero(role: role, name: actorName, summary: summary),
+      const SizedBox(height: 12),
+      _StaffMetricGrid(role: role, summary: summary),
+      if (onOpenSection != null) ...[
+        const SizedBox(height: 14),
+        _StaffQuickActions(
+          role: role,
+          unreadAlerts: unreadAlerts,
+          onOpen: onOpenSection,
+        ),
+      ],
+      const SizedBox(height: 12),
+      _StaffMonitorCard(role: role, onOpen: onOpenSection),
+      const SizedBox(height: 6),
     ];
   }
 }
@@ -611,6 +624,235 @@ String _usageGb(Object? value) {
   final bytes = value is num ? value : num.tryParse('${value ?? ''}');
   if (bytes == null || !bytes.isFinite || bytes < 0) return 'Unavailable';
   return '${(bytes / 1000000000).toStringAsFixed(2)} GB';
+}
+
+String _staffBdt(Object? value) {
+  final amount = value is num ? value : num.tryParse('${value ?? ''}');
+  if (amount == null || !amount.isFinite) return 'Unavailable';
+  return '৳${amount.toStringAsFixed(2)}';
+}
+
+class _StaffStatusHero extends StatelessWidget {
+  final String role;
+  final String name;
+  final Map<String, dynamic> summary;
+  const _StaffStatusHero({
+    required this.role,
+    required this.name,
+    required this.summary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reseller = role == 'reseller';
+    final customers = int.tryParse('${summary['customers'] ?? 0}') ?? 0;
+    final active = int.tryParse('${summary['active_customers'] ?? 0}') ?? 0;
+    final tone = Theme.of(context).colorScheme.primary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: tone.withValues(alpha: .18)),
+      ),
+      child: Row(children: [
+        CircleAvatar(
+          radius: 28,
+          backgroundColor: tone.withValues(alpha: .14),
+          child: Icon(
+            reseller
+                ? Icons.storefront_rounded
+                : Icons.admin_panel_settings_rounded,
+            color: tone,
+            size: 30,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                reseller ? 'Reseller dashboard' : 'Admin dashboard',
+                style: TextStyle(
+                  color: tone,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                  name.isEmpty
+                      ? (reseller ? 'Reseller' : 'Administrator')
+                      : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium),
+              Text('$active of $customers customers active',
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+        Icon(Icons.verified_user_rounded, color: tone),
+      ]),
+    );
+  }
+}
+
+class _StaffMetricGrid extends StatelessWidget {
+  final String role;
+  final Map<String, dynamic> summary;
+  const _StaffMetricGrid({required this.role, required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final reseller = role == 'reseller';
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 1.55,
+      children: [
+        _CustomerMetric(
+          icon: Icons.groups_rounded,
+          label: 'Customers',
+          value: '${summary['customers'] ?? 0}',
+        ),
+        _CustomerMetric(
+          icon: Icons.check_circle_rounded,
+          label: 'Active',
+          value: '${summary['active_customers'] ?? 0}',
+        ),
+        _CustomerMetric(
+          icon: Icons.payments_rounded,
+          label: 'This month sales',
+          value: _staffBdt(summary['monthly_recorded_sales_bdt']),
+          detail: 'Recorded transactions',
+        ),
+        _CustomerMetric(
+          icon: reseller ? Icons.percent_rounded : Icons.storefront_rounded,
+          label: reseller ? 'Profit rate' : 'Resellers',
+          value: reseller
+              ? '${summary['profile_profit_percentage'] ?? 0}%'
+              : '${summary['reseller_profiles'] ?? 0}',
+          detail: reseller ? 'Profile setting' : 'Configured profiles',
+        ),
+      ],
+    );
+  }
+}
+
+class _StaffQuickActions extends StatelessWidget {
+  final String role;
+  final int unreadAlerts;
+  final ValueChanged<String> onOpen;
+  const _StaffQuickActions({
+    required this.role,
+    required this.unreadAlerts,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final reseller = role == 'reseller';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Quick actions', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        Row(
+            children: reseller
+                ? [
+                    _QuickAction(
+                        icon: Icons.groups_rounded,
+                        label: 'Customers',
+                        onTap: () => onOpen('customers')),
+                    _QuickAction(
+                        icon: Icons.receipt_long_rounded,
+                        label: 'Sales',
+                        onTap: () => onOpen('sales')),
+                    _QuickAction(
+                        icon: Icons.router_rounded,
+                        label: 'ONU',
+                        onTap: () => onOpen('onus')),
+                    _QuickAction(
+                        icon: Icons.person_rounded,
+                        label: 'Account',
+                        onTap: () => onOpen('account')),
+                  ]
+                : [
+                    _QuickAction(
+                        icon: Icons.groups_rounded,
+                        label: 'Customers',
+                        onTap: () => onOpen('customers')),
+                    _QuickAction(
+                        icon: Icons.add_card_rounded,
+                        label: 'Recharge',
+                        onTap: () => onOpen('recharge')),
+                    _QuickAction(
+                        icon: Icons.support_agent_rounded,
+                        label: 'Support',
+                        onTap: () => onOpen('support')),
+                    _QuickAction(
+                        icon: unreadAlerts > 0
+                            ? Icons.notifications_active_rounded
+                            : Icons.hub_rounded,
+                        label:
+                            unreadAlerts > 0 ? 'Alerts $unreadAlerts' : 'ONU',
+                        onTap: () =>
+                            onOpen(unreadAlerts > 0 ? 'alerts' : 'onu-admin')),
+                  ]),
+      ],
+    );
+  }
+}
+
+class _StaffMonitorCard extends StatelessWidget {
+  final String role;
+  final ValueChanged<String>? onOpen;
+  const _StaffMonitorCard({required this.role, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) => Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            CircleAvatar(
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .primaryContainer
+                  .withValues(alpha: .65),
+              child: const Icon(Icons.monitor_heart_rounded),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Customer monitoring',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 3),
+                  Text(
+                    role == 'reseller'
+                        ? 'Monitor your assigned customers: status, package, usage, ONU, transactions and live traffic.'
+                        : 'Monitor every customer: status, package, usage, ONU, transactions and live traffic.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Open customers',
+              onPressed: onOpen == null ? null : () => onOpen!('customers'),
+              icon: const Icon(Icons.arrow_forward_rounded),
+            ),
+          ]),
+        ),
+      );
 }
 
 class _CustomerStatusHero extends StatelessWidget {

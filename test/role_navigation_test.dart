@@ -29,7 +29,18 @@ Future<void> showRole(WidgetTester tester, String role) async {
     home: PanelWorkspace(
       role: role,
       name: 'Test User',
-      load: fakeSection,
+      load: (section) async {
+        final data = await fakeSection(section);
+        data['role'] = role;
+        data['summary'] = <String, dynamic>{
+          'customers': 12,
+          'active_customers': 9,
+          'monthly_recorded_sales_bdt': 6400,
+          'reseller_profiles': 3,
+          'profile_profit_percentage': 20,
+        };
+        return data;
+      },
       loadTickets: () async => {'available': true, 'items': []},
       ticketDetail: (_) async => {
         'ticket': {'subject': 'Test', 'status': 'open'},
@@ -103,7 +114,10 @@ void main() {
   });
   testWidgets('reseller page navigation', (tester) async {
     await showRole(tester, 'reseller');
-    for (final label in ['Customers', 'Sales', 'ONU', 'Account', 'Overview']) {
+    expect(find.text('Reseller dashboard'), findsOneWidget);
+    expect(find.text('Customer monitoring'), findsOneWidget);
+    expect(find.text('This month sales'), findsOneWidget);
+    for (final label in ['Customers', 'Sales', 'ONU', 'Account', 'Dashboard']) {
       if (label == 'ONU') {
         await tester.tap(find.text('More').last);
         await tester.pumpAndSettle();
@@ -117,6 +131,9 @@ void main() {
   });
   testWidgets('admin page navigation', (tester) async {
     await showRole(tester, 'admin');
+    expect(find.text('Admin dashboard'), findsOneWidget);
+    expect(find.text('Customer monitoring'), findsOneWidget);
+    expect(find.text('This month sales'), findsOneWidget);
     for (final label in [
       'Customers',
       'Recharge',
@@ -124,7 +141,7 @@ void main() {
       'Resellers',
       'Sales',
       'Expiry',
-      'Overview'
+      'Dashboard'
     ]) {
       if (['Resellers', 'Sales', 'Expiry'].contains(label)) {
         await tester.tap(find.text('More').last);
