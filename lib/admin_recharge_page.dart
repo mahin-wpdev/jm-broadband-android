@@ -169,8 +169,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
 
   Future<bool> confirmRecharge(
       Map<String, dynamic> user, Map<String, dynamic> package) async {
-    bool customerConfirmed = false;
-    bool verified = false;
+    bool confirmed = false;
     return (await showDialog<bool>(
           context: context,
           builder: (dialogContext) => StatefulBuilder(
@@ -198,28 +197,20 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                       'It does NOT collect or verify a bKash/Nagad payment. '
                       'Check the amount and payment independently.'),
                   CheckboxListTile(
-                    value: customerConfirmed,
+                    value: confirmed,
                     contentPadding: EdgeInsets.zero,
                     onChanged: (value) =>
-                        update(() => customerConfirmed = value == true),
-                    title: Text(
-                        'I confirm this recharge is for ${user['username']}'),
+                        update(() => confirmed = value == true),
+                    title: const Text(
+                        'I confirm the customer/package details and have verified payment outside the app'),
                     subtitle: Text(
-                        '${user['fullname']} · ${package['name_plan']} · ৳${previewDetails!['expected_recorded_amount_bdt']}'),
+                        '${user['fullname']} (${user['username']}) · ${package['name_plan']} · ৳${previewDetails!['expected_recorded_amount_bdt']}'),
                   ),
-                  CheckboxListTile(
-                    value: verified,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (value) =>
-                        update(() => verified = value == true),
-                    title:
-                        const Text('I have verified payment outside the app'),
-                  ),
-                  if (!customerConfirmed || !verified)
+                  if (!confirmed)
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'Tick both confirmations to enable Recharge now.',
+                        'Tick the confirmation to enable Recharge now.',
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
@@ -231,7 +222,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: !verified || !customerConfirmed
+                  onPressed: !confirmed
                       ? null
                       : () => Navigator.pop(dialogContext, true),
                   child: const Text('Recharge now'),
@@ -241,6 +232,120 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
           ),
         )) ??
         false;
+  }
+
+  Widget _successLine(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Expanded(child: Text(label)),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Future<void> showRechargeSuccess(
+    Map<String, dynamic> customer,
+    Map<String, dynamic> selectedPackage,
+    Map<String, dynamic> result,
+    Map<String, dynamic> preview,
+  ) async {
+    if (!mounted) return;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Recharge successful',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 360,
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Theme.of(dialogContext).colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 28,
+                  offset: Offset(0, 12),
+                  color: Color(0x33000000),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 520),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) => Transform.scale(
+                    scale: value,
+                    child: child,
+                  ),
+                  child: const CircleAvatar(
+                    radius: 38,
+                    backgroundColor: Color(0xFFE7F7ED),
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 48,
+                      color: Color(0xFF168A45),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Recharge successful',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${customer['fullname']} (${customer['username']})',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                _successLine('Package', '${selectedPackage['name_plan']}'),
+                _successLine(
+                  'Amount',
+                  '৳${preview['expected_recorded_amount_bdt']}',
+                ),
+                _successLine('Invoice', '${result['invoice'] ?? '-'}'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    icon: const Icon(Icons.done_rounded),
+                    label: const Text('Done'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        child: ScaleTransition(
+          scale: Tween(begin: .92, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+          ),
+          child: child,
+        ),
+      ),
+    );
   }
 
   Future<void> submit() async {
@@ -275,9 +380,11 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
         'payment_verified': true,
       });
       if (!mounted) return;
+      final previewSnapshot = Map<String, dynamic>.from(previewDetails!);
+      await showRechargeSuccess(customer, package, result, previewSnapshot);
+      if (!mounted) return;
       setState(() {
-        success = 'Recharged ${customer['username']}. '
-            'Invoice: ${result['invoice']}.';
+        success = null;
         matches = [];
         selected = null;
         plans = [];

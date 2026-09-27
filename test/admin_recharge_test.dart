@@ -185,15 +185,18 @@ void main() {
     final confirm = find.widgetWithText(FilledButton, 'Recharge now');
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
     final confirmations = find.byType(CheckboxListTile);
-    expect(confirmations, findsNWidgets(2));
+    expect(confirmations, findsOneWidget);
     await tester.tap(confirmations.first);
-    await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.tap(confirmations.last);
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
     await tester.tap(confirm);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Recharged test-user'), findsOneWidget);
+    expect(find.text('Recharge successful'), findsOneWidget);
+    expect(find.text('INV-TEST-1'), findsOneWidget);
+    expect(find.text('৳500.00'), findsWidgets);
+    expect(find.text('Done'), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('Recharge successful'), findsNothing);
   });
 }
