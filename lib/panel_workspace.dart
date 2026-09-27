@@ -610,6 +610,10 @@ class _SectionView extends StatelessWidget {
       ],
       const SizedBox(height: 12),
       _StaffMonitorCard(role: role, onOpen: onOpenSection),
+      const SizedBox(height: 12),
+      _StaffExtendedMetrics(role: role, summary: summary),
+      const SizedBox(height: 12),
+      _StaffDashboardDetails(role: role, data: data),
       const SizedBox(height: 6),
     ];
   }
@@ -737,12 +741,320 @@ class _StaffMetricGrid extends StatelessWidget {
           label: reseller ? 'Profit rate' : 'Resellers',
           value: reseller
               ? '${summary['profile_profit_percentage'] ?? 0}%'
-              : '${summary['reseller_profiles'] ?? 0}',
+              : '${summary['reseller_total'] ?? 0}',
           detail: reseller ? 'Profile setting' : 'Configured profiles',
         ),
       ],
     );
   }
+}
+
+class _StaffExtendedMetrics extends StatelessWidget {
+  final String role;
+  final Map<String, dynamic> summary;
+  const _StaffExtendedMetrics({required this.role, required this.summary});
+
+  Widget _grid(List<Widget> children) => GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1.48,
+        children: children,
+      );
+
+  Widget _title(BuildContext context, String value) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(value, style: Theme.of(context).textTheme.titleMedium),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (role == 'reseller') {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _title(context, 'Service status'),
+        _grid([
+          _CustomerMetric(
+              icon: Icons.swap_horiz_rounded,
+              label: 'Active / inactive',
+              value:
+                  '${summary['active_customers'] ?? 0} / ${summary['inactive_customers'] ?? 0}'),
+          _CustomerMetric(
+              icon: Icons.event_busy_rounded,
+              label: 'Expiring 7 days',
+              value: '${summary['expiring_7_days'] ?? 0}'),
+        ]),
+        _title(context, 'Profit & settlement'),
+        _grid([
+          _CustomerMetric(
+              icon: Icons.account_balance_wallet_rounded,
+              label: 'Profit payable',
+              value: _staffBdt(summary['profit_payable_bdt'])),
+          _CustomerMetric(
+              icon: Icons.today_rounded,
+              label: 'Profit today',
+              value: _staffBdt(summary['profit_today_bdt'])),
+          _CustomerMetric(
+              icon: Icons.calendar_month_rounded,
+              label: 'Profit this month',
+              value: _staffBdt(summary['profit_month_bdt'])),
+          _CustomerMetric(
+              icon: Icons.insights_rounded,
+              label: 'Lifetime profit',
+              value: _staffBdt(summary['profit_lifetime_bdt'])),
+          _CustomerMetric(
+              icon: Icons.task_alt_rounded,
+              label: 'Total settled',
+              value: _staffBdt(summary['total_settled_bdt'])),
+          _CustomerMetric(
+              icon: Icons.inventory_2_rounded,
+              label: 'Allowed packages',
+              value: '${summary['allowed_packages'] ?? 0}'),
+        ]),
+        _title(context, 'Network'),
+        _grid([
+          _CustomerMetric(
+              icon: Icons.hub_rounded,
+              label: 'Assigned ONU',
+              value: '${summary['onu_total'] ?? 0}'),
+          _CustomerMetric(
+              icon: Icons.wifi_rounded,
+              label: 'ONU online',
+              value: '${summary['onu_online'] ?? 0}'),
+          _CustomerMetric(
+              icon: Icons.wifi_off_rounded,
+              label: 'ONU offline',
+              value: '${summary['onu_offline'] ?? 0}'),
+        ]),
+      ]);
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _title(context, 'Service status'),
+      _grid([
+        _CustomerMetric(
+            icon: Icons.swap_horiz_rounded,
+            label: 'Active / inactive',
+            value:
+                '${summary['service_active_total'] ?? summary['active_customers'] ?? 0} / ${summary['service_inactive_total'] ?? summary['inactive_customers'] ?? 0}'),
+      ]),
+      _title(context, 'Reseller overview'),
+      _grid([
+        _CustomerMetric(
+            icon: Icons.storefront_rounded,
+            label: 'Resellers',
+            value: '${summary['reseller_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.verified_rounded,
+            label: 'Active resellers',
+            value: '${summary['reseller_active_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.group_work_rounded,
+            label: 'Reseller customers',
+            value: '${summary['reseller_customer_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.pending_actions_rounded,
+            label: 'Pending approvals',
+            value: '${summary['reseller_pending_customers'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.account_balance_wallet_rounded,
+            label: 'Profit payable',
+            value: _staffBdt(summary['reseller_profit_due_bdt'])),
+        _CustomerMetric(
+            icon: Icons.bar_chart_rounded,
+            label: 'Profit this month',
+            value: _staffBdt(summary['reseller_month_profit_bdt'])),
+        _CustomerMetric(
+            icon: Icons.receipt_long_rounded,
+            label: 'Reseller sales',
+            value: _staffBdt(summary['reseller_month_sales_bdt']),
+            detail: 'This month'),
+      ]),
+      _title(context, 'Network & OLT'),
+      _grid([
+        _CustomerMetric(
+            icon: Icons.wifi_rounded,
+            label: 'ONU online',
+            value: '${summary['onu_online_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.wifi_off_rounded,
+            label: 'ONU offline',
+            value: '${summary['onu_offline_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.warning_amber_rounded,
+            label: 'ONU LOS',
+            value: '${summary['onu_los_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.link_off_rounded,
+            label: 'Unassigned ONU',
+            value: '${summary['onu_unassigned_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.dns_rounded,
+            label: 'OLT online / total',
+            value:
+                '${summary['olt_online_total'] ?? 0} / ${summary['olt_total'] ?? 0}'),
+        _CustomerMetric(
+            icon: Icons.sync_rounded,
+            label: 'Last OLT sync',
+            value: '${summary['olt_last_sync_status'] ?? 'never'}',
+            detail: '${summary['olt_last_sync_at'] ?? 'Never'}'),
+      ]),
+    ]);
+  }
+}
+
+class _StaffDashboardDetails extends StatelessWidget {
+  final String role;
+  final Map<String, dynamic> data;
+  const _StaffDashboardDetails({required this.role, required this.data});
+
+  List<Map<String, dynamic>> _rows(Object? value) {
+    final raw = value is List ? value : const [];
+    return raw
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (role == 'reseller') {
+      final earnings = _rows(data['recent_earnings']);
+      final settlements = _rows(data['settlements']);
+      final packages = _rows(data['allowed_packages']);
+      return Column(children: [
+        _DashboardDataSection(
+          title: 'Recent earnings',
+          emptyText: 'No earnings recorded yet.',
+          rows: [
+            for (final row in earnings)
+              _DashboardDataRow(
+                title:
+                    '${row['fullname'] ?? row['username'] ?? 'Customer'} · ${row['plan_name'] ?? 'Package'}',
+                subtitle:
+                    '${row['created_at'] ?? ''} · Recharge ${_staffBdt(row['recharge_amount'])}',
+                trailing: _staffBdt(row['profit_amount']),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _DashboardDataSection(
+          title: 'Settlement history',
+          emptyText: 'No settlements recorded yet.',
+          rows: [
+            for (final row in settlements)
+              _DashboardDataRow(
+                title: '${row['payment_method'] ?? 'Settlement'}',
+                subtitle:
+                    '${row['created_at'] ?? ''}${('${row['reference'] ?? ''}'.isEmpty) ? '' : ' · Ref ${row['reference']}'}',
+                trailing: _staffBdt(row['amount']),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        _DashboardDataSection(
+          title: 'Allowed packages',
+          emptyText: 'No package has been assigned by Admin.',
+          rows: [
+            for (final row in packages)
+              _DashboardDataRow(
+                title: '${row['name_plan'] ?? 'Package'}',
+                subtitle:
+                    '${row['type'] ?? ''} · ${row['validity'] ?? ''} ${row['validity_unit'] ?? ''}',
+                trailing: _staffBdt(row['price']),
+              ),
+          ],
+        ),
+      ]);
+    }
+
+    final resellers = _rows(data['reseller_overview']);
+    return _DashboardDataSection(
+      title: 'Reseller management',
+      emptyText: 'No reseller configured.',
+      rows: [
+        for (final row in resellers)
+          _DashboardDataRow(
+            title:
+                '${row['name'] ?? 'Reseller'} · ${row['profit_percentage'] ?? 0}%',
+            subtitle:
+                '${row['status'] ?? ''} · Customers ${row['customer_count'] ?? 0} · Active ${row['active_count'] ?? 0} · Sales ${_staffBdt(row['month_sales'])}',
+            trailing: _staffBdt(row['profit_due']),
+          ),
+      ],
+    );
+  }
+}
+
+class _DashboardDataSection extends StatelessWidget {
+  final String title;
+  final String emptyText;
+  final List<_DashboardDataRow> rows;
+  const _DashboardDataSection({
+    required this.title,
+    required this.emptyText,
+    required this.rows,
+  });
+
+  @override
+  Widget build(BuildContext context) => Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              if (rows.isEmpty)
+                Text(emptyText, style: Theme.of(context).textTheme.bodySmall)
+              else
+                for (var i = 0; i < rows.length; i++) ...[
+                  rows[i],
+                  if (i != rows.length - 1) const Divider(height: 18),
+                ],
+            ],
+          ),
+        ),
+      );
+}
+
+class _DashboardDataRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String trailing;
+  const _DashboardDataRow({
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(trailing, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      );
 }
 
 class _StaffQuickActions extends StatelessWidget {

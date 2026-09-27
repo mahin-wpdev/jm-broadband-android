@@ -132,7 +132,8 @@ void main() {
     expect(find.text('Customer profile'), findsOneWidget);
     expect(find.text('Live traffic'), findsOneWidget);
     expect(find.text('Recharge / change package'), findsNothing);
-    await Navigator.of(tester.element(find.text('Customer profile'))).maybePop();
+    await Navigator.of(tester.element(find.text('Customer profile')))
+        .maybePop();
     await tester.pumpAndSettle();
     await showRechargeRole(tester, 'admin');
     await tester.tap(find.text('More').last);
@@ -183,11 +184,16 @@ void main() {
     await tester.pumpAndSettle();
     final confirm = find.widgetWithText(FilledButton, 'Recharge now');
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.enterText(find.byType(TextField).last, 'wrong-user');
+    final confirmations = find.byType(CheckboxListTile);
+    expect(confirmations, findsNWidgets(2));
+    await tester.tap(confirmations.first);
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
-    await tester.enterText(find.byType(TextField).last, 'test-user');
+    await tester.tap(confirmations.last);
     await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Recharged test-user'), findsOneWidget);
   });
 }

@@ -169,7 +169,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
 
   Future<bool> confirmRecharge(
       Map<String, dynamic> user, Map<String, dynamic> package) async {
-    String confirmation = '';
+    bool customerConfirmed = false;
     bool verified = false;
     return (await showDialog<bool>(
           context: context,
@@ -197,20 +197,32 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                       'can mark additional bills paid in phpNuxBill. '
                       'It does NOT collect or verify a bKash/Nagad payment. '
                       'Check the amount and payment independently.'),
-                  TextField(
+                  CheckboxListTile(
+                    value: customerConfirmed,
+                    contentPadding: EdgeInsets.zero,
                     onChanged: (value) =>
-                        update(() => confirmation = value.trim()),
-                    decoration: const InputDecoration(
-                      labelText: 'Type the customer username to confirm',
-                    ),
+                        update(() => customerConfirmed = value == true),
+                    title: Text(
+                        'I confirm this recharge is for ${user['username']}'),
+                    subtitle: Text(
+                        '${user['fullname']} · ${package['name_plan']} · ৳${previewDetails!['expected_recorded_amount_bdt']}'),
                   ),
                   CheckboxListTile(
                     value: verified,
+                    contentPadding: EdgeInsets.zero,
                     onChanged: (value) =>
                         update(() => verified = value == true),
                     title:
                         const Text('I have verified payment outside the app'),
                   ),
+                  if (!customerConfirmed || !verified)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Tick both confirmations to enable Recharge now.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
                 ]),
               ),
               actions: [
@@ -219,7 +231,7 @@ class _AdminRechargePageState extends State<AdminRechargePage> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: !verified || confirmation != user['username']
+                  onPressed: !verified || !customerConfirmed
                       ? null
                       : () => Navigator.pop(dialogContext, true),
                   child: const Text('Recharge now'),
