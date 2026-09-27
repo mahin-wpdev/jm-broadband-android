@@ -169,7 +169,7 @@ void main() {
       'Account',
       'Home'
     ]) {
-      if (!['Home', 'Account'].contains(label)) {
+      if (!['Home', 'Inbox', 'Account'].contains(label)) {
         await tester.tap(find.text('More').last);
         await tester.pumpAndSettle();
       }
@@ -213,8 +213,10 @@ void main() {
     expect(find.text('Reseller overview'), findsOneWidget);
     expect(find.text('Network & OLT'), findsOneWidget);
     expect(find.text('Reseller management'), findsOneWidget);
+    expect(find.text('Inbox'), findsOneWidget);
     for (final label in [
       'Customers',
+      'Inbox',
       'Recharge',
       'Support',
       'Resellers',
@@ -222,7 +224,7 @@ void main() {
       'Expiry',
       'Dashboard'
     ]) {
-      if (['Resellers', 'Sales', 'Expiry'].contains(label)) {
+      if (['Support', 'Resellers', 'Sales', 'Expiry'].contains(label)) {
         await tester.tap(find.text('More').last);
         await tester.pumpAndSettle();
       }

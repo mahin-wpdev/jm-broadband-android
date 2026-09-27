@@ -110,21 +110,21 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
         _ => const [
             _Page('Dashboard', 'home', Icons.dashboard_outlined),
             _Page('Customers', 'customers', Icons.group_outlined),
+            _Page('Inbox', 'admin-inbox', Icons.inbox_outlined),
             _Page('Resellers', 'resellers', Icons.groups_outlined),
             _Page('Sales', 'sales', Icons.receipt_long_outlined),
             _Page('Expiry', 'expiry', Icons.event_busy_outlined),
             _Page('Recharge', 'recharge', Icons.add_card_outlined),
             _Page('Support', 'support', Icons.support_agent_rounded),
-            _Page('Alerts', 'alerts', Icons.notifications_rounded),
             _Page('ONU Manager', 'onu-admin', Icons.hub_rounded),
             _Page('More', 'more', Icons.apps_outlined),
           ],
       };
 
   List<String> get primarySections => switch (widget.role) {
-        'customer' => const ['home', 'account'],
+        'customer' => const ['home', 'inbox', 'account'],
         'reseller' => const ['home', 'customers', 'sales', 'account'],
-        _ => const ['home', 'customers', 'recharge', 'support'],
+        _ => const ['home', 'customers', 'admin-inbox', 'recharge'],
       };
 
   void openMore() {
@@ -195,6 +195,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
               section == 'expiry' ||
               section == 'support' ||
               section == 'alerts' ||
+              section == 'admin-inbox' ||
               section == 'onu-admin')
           ? Future.value(<String, dynamic>{'available': true})
           : section == 'customers'
@@ -258,7 +259,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             IconButton(
                 tooltip: 'Support notifications',
                 onPressed: () {
-                  final index = pages.indexWhere((p) => p.section == 'alerts');
+                  final index =
+                      pages.indexWhere((p) => p.section == 'admin-inbox');
                   if (index >= 0) change(index);
                   checkTicketAlerts();
                 },
@@ -298,6 +300,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                     page.section == 'expiry' ||
                     page.section == 'support' ||
                     page.section == 'alerts' ||
+                    page.section == 'admin-inbox' ||
                     page.section == 'onu-admin')
                 ? null
                 : refresh,
@@ -337,7 +340,7 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
             detail: widget.ticketDetail,
             create: widget.createTicket,
             update: widget.updateTicket),
-        'alerts' => TicketNotificationsPage(
+        'alerts' || 'admin-inbox' => TicketNotificationsPage(
             load: widget.ticketNotifications,
             markRead: widget.readTicketNotification,
             onTicket: (id) => Navigator.of(context).push(
