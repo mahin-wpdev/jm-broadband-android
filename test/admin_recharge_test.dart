@@ -119,11 +119,21 @@ void main() {
     expect(find.text('Recharge'), findsNothing);
   });
 
-  testWidgets('expiry dashboard and profile are admin-only', (tester) async {
+  testWidgets('expiry stays admin-only while reseller can monitor own customer',
+      (tester) async {
     await showRechargeRole(tester, 'customer');
     expect(find.text('Expiry'), findsNothing);
     await showRechargeRole(tester, 'reseller');
     expect(find.text('Expiry'), findsNothing);
+    await tester.tap(find.text('Customers').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Details').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Customer profile'), findsOneWidget);
+    expect(find.text('Live traffic'), findsOneWidget);
+    expect(find.text('Recharge / change package'), findsNothing);
+    await Navigator.of(tester.element(find.text('Customer profile'))).maybePop();
+    await tester.pumpAndSettle();
     await showRechargeRole(tester, 'admin');
     await tester.tap(find.text('More').last);
     await tester.pumpAndSettle();

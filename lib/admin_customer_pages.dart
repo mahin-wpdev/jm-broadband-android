@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
-/// Read-only account overview, restricted by the PHP API to Admin/SuperAdmin.
+/// Read-only customer monitor. The PHP API enforces admin/reseller scope.
 class AdminCustomerProfilePage extends StatefulWidget {
   final int customerId;
   final Future<Map<String, dynamic>> Function(int) load;
-  final void Function(String username) onRecharge;
+  final void Function(String username)? onRecharge;
+  final VoidCallback onTraffic;
   const AdminCustomerProfilePage(
       {super.key,
       required this.customerId,
       required this.load,
-      required this.onRecharge});
+      required this.onTraffic,
+      this.onRecharge});
   @override
   State<AdminCustomerProfilePage> createState() => _AdminCustomerProfileState();
 }
@@ -61,12 +63,19 @@ class _AdminCustomerProfileState extends State<AdminCustomerProfilePage> {
               Text('${c['fullname']} · ${c['username']}',
                   style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 8),
-              FilledButton.icon(
-                  onPressed: c['status'] == 'Active'
-                      ? () => widget.onRecharge('${c['username']}')
-                      : null,
-                  icon: const Icon(Icons.add_card),
-                  label: const Text('Recharge / change package')),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                FilledButton.icon(
+                    onPressed: c['status'] == 'Active' ? widget.onTraffic : null,
+                    icon: const Icon(Icons.speed_rounded),
+                    label: const Text('Live traffic')),
+                if (widget.onRecharge != null)
+                  FilledButton.icon(
+                      onPressed: c['status'] == 'Active'
+                          ? () => widget.onRecharge!('${c['username']}')
+                          : null,
+                      icon: const Icon(Icons.add_card),
+                      label: const Text('Recharge / change package')),
+              ]),
               _details('Account', {
                 'Status': c['status'],
                 'Phone': c['phonenumber'],

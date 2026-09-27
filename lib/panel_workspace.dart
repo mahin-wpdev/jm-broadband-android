@@ -12,6 +12,7 @@ class PanelWorkspace extends StatefulWidget {
   final String name;
   final Future<Map<String, dynamic>> Function(String section) load;
   final Future<Map<String, dynamic>> Function() loadTraffic;
+  final Future<Map<String, dynamic>> Function(int customerId)? loadCustomerTraffic;
   final String trafficHistoryKey;
   final Future<Map<String, dynamic>> Function(String query) searchRecharge;
   final Future<Map<String, dynamic>> Function(String query) searchCustomers;
@@ -48,6 +49,7 @@ class PanelWorkspace extends StatefulWidget {
     required this.name,
     required this.load,
     required this.loadTraffic,
+    this.loadCustomerTraffic,
     required this.trafficHistoryKey,
     required this.searchRecharge,
     required this.searchCustomers,
@@ -230,7 +232,20 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
         builder: (_) => AdminCustomerProfilePage(
             customerId: id,
             load: widget.loadAdminProfile,
-            onRecharge: openRecharge)));
+            onRecharge: widget.role == 'admin' || widget.role == 'superadmin'
+                ? openRecharge
+                : null,
+            onTraffic: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => Scaffold(
+                    appBar: AppBar(title: const Text('Customer live traffic')),
+                    body: LiveTrafficPage(
+                        load: () => widget.loadCustomerTraffic == null
+                            ? Future.value(<String, dynamic>{
+                                'available': false,
+                                'message': 'Customer traffic monitoring is unavailable.'
+                              })
+                            : widget.loadCustomerTraffic!(id),
+                        historyKey: '${widget.trafficHistoryKey}:customer:$id')))))));
   }
 
   @override
@@ -410,7 +425,8 @@ class _PanelWorkspaceState extends State<PanelWorkspace> {
                         ? openRecharge
                         : null,
                     onProfile: (widget.role == 'admin' ||
-                                widget.role == 'superadmin') &&
+                                widget.role == 'superadmin' ||
+                                widget.role == 'reseller') &&
                             page.section == 'customers'
                         ? openCustomer
                         : null,
