@@ -31,7 +31,7 @@ class _CustomerDashboardState extends State<CustomerDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('JM Broadband'),
+        title: const Text('Arivo'),
         actions: [
           IconButton(
             tooltip: 'Refresh',

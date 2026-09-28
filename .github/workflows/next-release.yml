@@ -1,0 +1,25 @@
+name: Next release checks
+on:
+  push:
+    branches: [next-release]
+  pull_request:
+    branches: [next-release]
+jobs:
+  flutter:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Static analyzer
+        run: flutter analyze --no-pub
+      - name: Widget and unit tests
+        run: flutter test --no-pub
+      - name: Android debug build verification
+        run: flutter build apk --debug --no-pub
+      # Upload/release signing requires offline key.properties and keystore.
+      # Never insert signing secrets in the public repository or logs.
