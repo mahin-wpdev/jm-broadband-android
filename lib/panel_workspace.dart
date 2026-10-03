@@ -794,6 +794,16 @@ class _StaffExtendedMetrics extends StatelessWidget {
         _title(context, 'Profit & settlement'),
         _grid([
           _CustomerMetric(
+              icon: Icons.account_balance_rounded,
+              label: 'Owed to ISP',
+              value: _staffBdt(summary['debt_to_isp_bdt']),
+              detail: 'Remaining debt'),
+          _CustomerMetric(
+              icon: Icons.task_alt_rounded,
+              label: 'Recovered from profit',
+              value: _staffBdt(summary['debt_recovered_bdt']),
+              detail: 'Applied from recharges'),
+          _CustomerMetric(
               icon: Icons.account_balance_wallet_rounded,
               label: 'Profit payable',
               value: _staffBdt(summary['profit_payable_bdt'])),
@@ -847,6 +857,15 @@ class _StaffExtendedMetrics extends StatelessWidget {
       ]),
       _title(context, 'Reseller overview'),
       _grid([
+        _CustomerMetric(
+            icon: Icons.account_balance_rounded,
+            label: 'My receivable',
+            value: _staffBdt(summary['reseller_receivable_bdt']),
+            detail: 'Outstanding reseller debt'),
+        _CustomerMetric(
+            icon: Icons.task_alt_rounded,
+            label: 'Recovered from profit',
+            value: _staffBdt(summary['reseller_debt_recovered_bdt'])),
         _CustomerMetric(
             icon: Icons.storefront_rounded,
             label: 'Resellers',
@@ -928,8 +947,26 @@ class _StaffDashboardDetails extends StatelessWidget {
     if (role == 'reseller') {
       final earnings = _rows(data['recent_earnings']);
       final settlements = _rows(data['settlements']);
+      final debts = _rows(data['debt_history']);
       final packages = _rows(data['allowed_packages']);
       return Column(children: [
+        _DashboardDataSection(
+          title: 'Debt recovery history',
+          emptyText: 'No debt activity yet.',
+          rows: [
+            for (final row in debts)
+              _DashboardDataRow(
+                title: row['entry_type'] == 'debt'
+                    ? 'Debt added'
+                    : 'Recovered from recharge profit',
+                subtitle:
+                    '${row['created_at'] ?? ''} · ${row['note'] ?? ''}${row['recharge_id'] == null ? '' : ' · Recharge #${row['recharge_id']}'}',
+                trailing:
+                    _staffBdt((num.tryParse('${row['amount']}') ?? 0).abs()),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
         _DashboardDataSection(
           title: 'Recent earnings',
           emptyText: 'No earnings recorded yet.',
@@ -985,7 +1022,7 @@ class _StaffDashboardDetails extends StatelessWidget {
             title:
                 '${row['name'] ?? 'Reseller'} · ${row['profit_percentage'] ?? 0}%',
             subtitle:
-                '${row['status'] ?? ''} · Customers ${row['customer_count'] ?? 0} · Active ${row['active_count'] ?? 0} · Sales ${_staffBdt(row['month_sales'])}',
+                '${row['status'] ?? ''} · Customers ${row['customer_count'] ?? 0} · Active ${row['active_count'] ?? 0} · Sales ${_staffBdt(row['month_sales'])} · Owes me ${_staffBdt(row['debt_to_isp'])}',
             trailing: _staffBdt(row['profit_due']),
           ),
       ],

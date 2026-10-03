@@ -40,6 +40,10 @@ Future<void> showRole(WidgetTester tester, String role) async {
           'profile_profit_percentage': 20,
           'expiring_7_days': 2,
           'profit_payable_bdt': 900,
+          'debt_to_isp_bdt': 200,
+          'debt_recovered_bdt': 300,
+          'reseller_receivable_bdt': 600,
+          'reseller_debt_recovered_bdt': 400,
           'profit_today_bdt': 50,
           'profit_month_bdt': 600,
           'profit_lifetime_bdt': 2400,
@@ -67,6 +71,15 @@ Future<void> showRole(WidgetTester tester, String role) async {
           'olt_last_sync_at': '2026-09-28 00:30:00',
         };
         if (role == 'reseller') {
+          data['debt_history'] = [
+            {
+              'created_at': '2026-10-03',
+              'amount': -300,
+              'entry_type': 'recovery',
+              'recharge_id': 132,
+              'note': 'Recovered from recharge profit',
+            }
+          ];
           data['recent_earnings'] = [
             {
               'fullname': 'Customer One',
@@ -103,7 +116,8 @@ Future<void> showRole(WidgetTester tester, String role) async {
               'customer_count': 7,
               'active_count': 6,
               'month_sales': 4200,
-              'profit_due': 800
+              'profit_due': 800,
+              'debt_to_isp': 600,
             }
           ];
         }
@@ -188,6 +202,10 @@ void main() {
     await tester.scrollUntilVisible(find.text('Recent earnings'), 500,
         scrollable: find.byType(Scrollable).first);
     expect(find.text('Profit payable'), findsOneWidget);
+    expect(find.text('Owed to ISP'), findsOneWidget);
+    expect(find.text('Recovered from profit'), findsOneWidget);
+    expect(find.text('Debt recovery history'), findsOneWidget);
+    expect(find.text('Recovered from recharge profit'), findsOneWidget);
     expect(find.text('Recent earnings'), findsOneWidget);
     expect(find.text('Settlement history'), findsOneWidget);
     expect(find.text('Allowed packages'), findsWidgets);
@@ -211,6 +229,8 @@ void main() {
     await tester.scrollUntilVisible(find.text('Reseller management'), 500,
         scrollable: find.byType(Scrollable).first);
     expect(find.text('Reseller overview'), findsOneWidget);
+    expect(find.text('My receivable'), findsOneWidget);
+    expect(find.textContaining('Owes me'), findsWidgets);
     expect(find.text('Network & OLT'), findsOneWidget);
     expect(find.text('Reseller management'), findsOneWidget);
     expect(find.text('Inbox'), findsOneWidget);
